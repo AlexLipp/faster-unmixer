@@ -8,17 +8,26 @@ Unlike the previously published method [(Lipp et al. 2021)](https://agupubs.onli
 
 # Compiling
 
-To get Cython extension for Jupyter notebook:
+Check out submodules:
 ```
-cython cyth_scripts.pyx
-python3 setup.py build_ext
+git submodule update --init --recursive
 ```
 
-To get the C++ code installed
+Install prereqs:
+```
+sudo apt install pybind11-dev cmake
+```
+
+Compile the C++ code:
 ```
 mkdir build
 cd build
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_GDAL=ON ..
 make
-./faster-unmixer.x ../data/topo.dat ../data/fitted_samp_locs.dat
+cd ..
+```
+
+Run the optimization problem:
+```
+python3 run.py
 ```
