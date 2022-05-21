@@ -13,3 +13,4 @@ add_executable(faster-unmixer.x
 )
 target_link_libraries(faster-unmixer.x PRIVATE richdem)
 target_compile_options(faster-unmixer.x PRIVATE -Wall -Wextra -pedantic -Werror)
+target_compile_features(faster-unmixer.x PRIVATE cxx_std_20)

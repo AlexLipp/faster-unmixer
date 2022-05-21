@@ -9,8 +9,17 @@
 #include <iostream>
 #include <queue>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace richdem;
+
+struct SampleNode {
+  const size_t parent;
+  std::vector<size_t> children;
+  size_t area = 0;
+  SampleNode(size_t parent) : parent(parent) {}
+};
 
 int main(int argc, char **argv){
   if(argc != 3){
@@ -42,13 +51,16 @@ int main(int argc, char **argv){
     double sx;
     double sy;
     while(fin>>sx>>sy){
-      sample_locs.insert(flowdirs.xyToI(sx,sy));
+      sample_locs.insert(dem.xyToI(sx,sy));
     }
   }
 
   // Get D8 flow directions while ignoring depressions
   auto flowdirs = Array2D<d8_flowdir_t>::make_from_template(dem);
   PriorityFloodFlowdirs_Barnes2014(dem, flowdirs);
+
+  // Graph of how the samples are connected together.
+  std::vector<SampleNode> sample_parent_graph;
 
   // Identify cells which do not flow to anywhere. These are the start of our
   // region-identifying procedure
@@ -64,9 +76,7 @@ int main(int argc, char **argv){
   // Indicates that the cell doesn't correspond to any label
   constexpr auto NO_LABEL = 0;
   auto sample_label = Array2D<uint32_t>::make_from_template(dem, NO_LABEL);
-
-  // Label to be applied to the next sensor we encounter
-  auto current_label = 1;
+  sample_parent_graph.emplace_back(0);
 
   // Iterate in a wave from all the flow endpoints to the headwaters, labeling
   // cells as we go.
@@ -76,8 +86,19 @@ int main(int argc, char **argv){
 
     // We have identified a new station!
     if(sample_locs.count(flowdirs.xyToI(c.x,c.y))!=0){
-      sample_label(c.x,c.y) = current_label++;
+      // Generate a new label for the sample
+      const auto my_new_label = sample_parent_graph.size();
+      // The current label will become the parent label
+      const auto my_current_label = sample_label(c.x,c.y);
+      auto& parent = sample_parent_graph.at(my_current_label);
+      parent.children.push_back(my_new_label);
+      sample_parent_graph.emplace_back(my_current_label);
+      // Update the sample's label
+      sample_label(c.x,c.y) = my_new_label;
     }
+
+    const auto my_label = sample_label(c.x,c.y);
+    sample_parent_graph.at(my_label).area++;
 
     // Loop over all my neighbours
     for(int n=1;n<=8;n++){
@@ -94,8 +115,30 @@ int main(int argc, char **argv){
     }
   }
 
+  // Sanity check
+  {
+    size_t total_area=0;
+    for(const auto &x: sample_parent_graph){
+      total_area+=x.area;
+    }
+    if(total_area!=dem.size()){
+      throw std::runtime_error("Total area in graph does not equal total area in DEM!");
+    }
+  }
+
   // Save regions output
+  sample_label.setNoData(0);
   sample_label.saveGDAL("/z/out.tif");
+
+  std::ofstream fout_sg("/z/sample_graph.dot");
+  fout_sg<<"# dot -Tpng sample_graph.dot -o sample_graph.png"<<std::endl;
+  fout_sg<<"digraph sample_graph {"<<std::endl;
+  for(size_t i=0;i<sample_parent_graph.size();i++){
+    const auto& self = sample_parent_graph.at(i);
+    fout_sg<<"    "<<i<<" [label=\""<<i<<"\\n"<<self.area<<"\"];"<<std::endl;
+    fout_sg<<"    "<<i<<" -> "<<self.parent<<";"<<std::endl;
+  }
+  fout_sg<<"}"<<std::endl;
 
   return 0;
 }

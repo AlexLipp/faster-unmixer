@@ -8,6 +8,13 @@ Unlike the previously published method [(Lipp et al. 2021)](https://agupubs.onli
 
 # Compiling
 
+To get Cython extension for Jupyter notebook:
+```
+cython cyth_scripts.pyx
+python3 setup.py build_ext
+```
+
+To get the C++ code installed
 ```
 mkdir build
 cd build
