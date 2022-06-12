@@ -44,7 +44,7 @@ std::vector<SampleData> get_sample_data(const std::string &data_dir){
   return sample_data;
 }
 
-std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
+std::pair<std::vector<SampleNode>, adjacency_graph_t> faster_unmixer(const std::string& data_dir){
   // Load data
   Array2D<float> dem(data_dir + "/topo.dat");
 
@@ -87,6 +87,7 @@ std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
   // Indicates that the cell doesn't correspond to any label
   constexpr auto NO_LABEL = 0;
   auto sample_label = Array2D<uint32_t>::make_from_template(dem, NO_LABEL);
+  sample_label.setNoData(NO_LABEL);
   sample_parent_graph.emplace_back(0, SampleData{});
 
   // Iterate in a wave from all the flow endpoints to the headwaters, labeling
@@ -138,8 +139,28 @@ std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
     }
   }
 
+  adjacency_graph_t adjacency_graph;
+
+  iterate_2d(sample_label, [&](const auto x, const auto y){
+    const auto my_label = sample_label(x, y);
+    if(my_label == sample_label.noData()){
+      return;
+    }
+    for(int n=1;n<=8;n++){
+      const int nx = x + d8x[n];
+      const int ny = y + d8y[n];
+      if(sample_label.inGrid(nx,ny)){
+        const auto n_label = sample_label(nx, ny);
+        // Less-than comparison creates a preferred ordering to prevent
+        // double-counting and also prevents self-loops
+        if(n_label != sample_label.noData() && my_label < n_label){
+          adjacency_graph[{my_label,n_label}]++;
+        }
+      }
+    }
+  });
+
   // Save regions output
-  sample_label.setNoData(0);
   sample_label.saveGDAL("/z/out.tif");
 
   std::ofstream fout_sg("/z/sample_graph.dot");
@@ -148,9 +169,9 @@ std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
   for(size_t i=0;i<sample_parent_graph.size();i++){
     const auto& self = sample_parent_graph.at(i);
     fout_sg<<"    "<<i<<" [label=\""<<self.data.name<<"\\n"<<self.area<<"\"];"<<std::endl;
-    fout_sg<<"    "<<i<<" -> "<<self.parent<<";"<<std::endl;
+    fout_sg<<"    "<<i<<" -> "<<self.downstream_node<<";"<<std::endl;
   }
   fout_sg<<"}"<<std::endl;
 
-  return sample_parent_graph;
+  return {sample_parent_graph, adjacency_graph};
 }
