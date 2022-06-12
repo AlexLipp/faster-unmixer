@@ -77,14 +77,19 @@ for adjacent_nodes, border_length in sample_adjacency.items():
     b_concen = b_data.my_concentrations[e]
     regularizer_terms.append(border_length * (a_concen-b_concen))
 
+if not regularizer_terms:
+  print("WARNING: No regularizer terms found!")
+
 # Build the objective and constraints
 regularizer_strength = 1e-3
-objective = cp.Minimize(cp.norm(cp.vstack(primary_terms)) + regularizer_strength * cp.norm(cp.vstack(regularizer_terms)))
+objective = cp.norm(cp.vstack(primary_terms))
+if regularizer_terms:
+  objective += regularizer_strength * cp.norm(cp.vstack(regularizer_terms))
 constraints = []
 
 # Create and solve the problem
 print("Compiling and solving problem...")
-problem = cp.Problem(objective, constraints)
+problem = cp.Problem(cp.Minimize(objective), constraints)
 objective_value = problem.solve(verbose=True)
 
 # Print the solution we found
