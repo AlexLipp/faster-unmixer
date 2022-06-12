@@ -61,8 +61,8 @@ std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
   // Get sample locations and put them in a set using flat-indexing for fast
   // look-up
   std::unordered_map<uint32_t, SampleData> sample_locs;
-  for(const auto &x: get_sample_data(data_dir)){
-    sample_locs[dem.xyToI(x.x, x.y)] = x;
+  for(const auto &sample: get_sample_data(data_dir)){
+    sample_locs[dem.xyToI(sample.x, sample.y)] = sample;
   }
 
 
