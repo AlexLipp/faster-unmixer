@@ -20,6 +20,9 @@ for i, x in enumerate(data):
   if x.parent!=0:
     G.add_edge(i, x.parent)
 
+nx.draw_networkx(G,arrows=True,with_labels=True,node_size=10)
+plt.show()
+
 elements = ['Li', 'Be', 'Na', 'Mg', 'Al', 'P', 'K', 'Ca', 'Ti', 'V',
        'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'As', 'Se', 'Rb', 'Sr',
        'Y', 'Zr', 'Nb', 'Mo', 'Ag', 'Cd', 'Sn', 'Sb', 'Cs', 'Ba', 'La', 'Ce',

@@ -46,7 +46,7 @@ std::vector<SampleData> get_sample_data(const std::string &data_dir){
 
 std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
   // Load data
-  Array2D<float> dem(data_dir + "/topo.dat");
+  Array2D<float> dem(data_dir + "/topo_filled.dat");
 
   // Determine the location of streams via area thresholding
   // auto accum = Array2D<double>::make_from_template(dem);
@@ -140,9 +140,9 @@ std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
 
   // Save regions output
   sample_label.setNoData(0);
-  sample_label.saveGDAL("/z/out.tif");
+  sample_label.saveGDAL("out.tif");
 
-  std::ofstream fout_sg("/z/sample_graph.dot");
+  std::ofstream fout_sg("sample_graph.dot");
   fout_sg<<"# dot -Tpng sample_graph.dot -o sample_graph.png"<<std::endl;
   fout_sg<<"digraph sample_graph {"<<std::endl;
   for(size_t i=0;i<sample_parent_graph.size();i++){

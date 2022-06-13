@@ -1,3 +1,7 @@
+*.tif
+*.dot
+data_working/
+data/
 .vscode/
 .ipynb_checkpoints/
 __pycache__/
