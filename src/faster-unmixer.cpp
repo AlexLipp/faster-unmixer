@@ -3,9 +3,10 @@
 #include <richdem/common/Array2D.hpp>
 #include <richdem/common/grid_cell.hpp>
 #include <richdem/common/iterators.hpp>
+#include <richdem/depressions/Barnes2014.hpp>
 #include <richdem/flowmet/d8_flowdirs.hpp>
 #include <richdem/methods/flow_accumulation.hpp>
-#include <richdem/depressions/Barnes2014.hpp>
+#include <richdem/misc/conversion.hpp>
 
 #include <fstream>
 #include <queue>
@@ -44,31 +45,22 @@ std::vector<SampleData> get_sample_data(const std::string &data_dir){
   return sample_data;
 }
 
-std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
+std::pair<std::vector<SampleNode>, adjacency_graph_t> faster_unmixer(const std::string& data_dir){
   // Load data
-  Array2D<float> dem(data_dir + "/topo_filled.dat");
+  Array2D<d8_flowdir_t> arc_flowdirs(data_dir + "/d8.asc");
 
-  // Determine the location of streams via area thresholding
-  // auto accum = Array2D<double>::make_from_template(dem);
-  // FA_D8(dem, accum);
-  // constexpr auto area_threshold = 25*1000000.0;
-  // for(auto i=accum.i0();i<accum.size();i++){
-  //   if(accum(i) < area_threshold){
-  //     accum(i) = 0;
-  //   }
-  // }
+  // Convert raw flowdirs to RichDEM flowdirs
+  auto flowdirs = Array2D<d8_flowdir_t>::make_from_template(arc_flowdirs);
+  convert_arc_flowdirs_to_richdem_d8(arc_flowdirs, flowdirs);
+
+  flowdirs.saveGDAL("/z/rd_flowdirs.tif");
 
   // Get sample locations and put them in a set using flat-indexing for fast
   // look-up
   std::unordered_map<uint32_t, SampleData> sample_locs;
-  for(const auto &x: get_sample_data(data_dir)){
-    sample_locs[dem.xyToI(x.x, x.y)] = x;
+  for(const auto &sample: get_sample_data(data_dir)){
+    sample_locs[flowdirs.xyToI(sample.x, sample.y)] = sample;
   }
-
-
-  // Get D8 flow directions while ignoring depressions
-  auto flowdirs = Array2D<d8_flowdir_t>::make_from_template(dem);
-  PriorityFloodFlowdirs_Barnes2014(dem, flowdirs);
 
   // Graph of how the samples are connected together.
   std::vector<SampleNode> sample_parent_graph;
@@ -77,16 +69,15 @@ std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
   // region-identifying procedure
   std::queue<GridCell> q;
   iterate_2d(flowdirs, [&](const auto x, const auto y){
-    if(flowdirs.isEdgeCell(x,y)){
-      q.emplace(x,y);
-    } else if(flowdirs(x,y)==NO_FLOW){
+    if(flowdirs(x,y)==NO_FLOW){
       q.emplace(x,y);
     }
   });
 
   // Indicates that the cell doesn't correspond to any label
   constexpr auto NO_LABEL = 0;
-  auto sample_label = Array2D<uint32_t>::make_from_template(dem, NO_LABEL);
+  auto sample_label = Array2D<uint32_t>::make_from_template(flowdirs, NO_LABEL);
+  sample_label.setNoData(NO_LABEL);
   sample_parent_graph.emplace_back(0, SampleData{});
 
   // Iterate in a wave from all the flow endpoints to the headwaters, labeling
@@ -133,14 +124,34 @@ std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
     for(const auto &x: sample_parent_graph){
       total_area+=x.area;
     }
-    if(total_area!=dem.size()){
-      throw std::runtime_error("Total area in graph does not equal total area in DEM!");
+    if(total_area!=flowdirs.size()){
+      throw std::runtime_error("Total area in graph " + std::to_string(total_area) + " does not equal total area in DEM " + std::to_string(flowdirs.size()) + "!");
     }
   }
 
+  adjacency_graph_t adjacency_graph;
+
+  iterate_2d(sample_label, [&](const auto x, const auto y){
+    const auto my_label = sample_label(x, y);
+    if(my_label == sample_label.noData()){
+      return;
+    }
+    for(int n=1;n<=8;n++){
+      const int nx = x + d8x[n];
+      const int ny = y + d8y[n];
+      if(sample_label.inGrid(nx,ny)){
+        const auto n_label = sample_label(nx, ny);
+        // Less-than comparison creates a preferred ordering to prevent
+        // double-counting and also prevents self-loops
+        if(n_label != sample_label.noData() && my_label < n_label){
+          adjacency_graph[{my_label,n_label}]++;
+        }
+      }
+    }
+  });
+
   // Save regions output
-  sample_label.setNoData(0);
-  sample_label.saveGDAL("out.tif");
+  sample_label.saveGDAL("/z/labels.tif");
 
   std::ofstream fout_sg("sample_graph.dot");
   fout_sg<<"# dot -Tpng sample_graph.dot -o sample_graph.png"<<std::endl;
@@ -148,9 +159,9 @@ std::vector<SampleNode> faster_unmixer(const std::string& data_dir){
   for(size_t i=0;i<sample_parent_graph.size();i++){
     const auto& self = sample_parent_graph.at(i);
     fout_sg<<"    "<<i<<" [label=\""<<self.data.name<<"\\n"<<self.area<<"\"];"<<std::endl;
-    fout_sg<<"    "<<i<<" -> "<<self.parent<<";"<<std::endl;
+    fout_sg<<"    "<<i<<" -> "<<self.downstream_node<<";"<<std::endl;
   }
   fout_sg<<"}"<<std::endl;
 
-  return sample_parent_graph;
+  return {sample_parent_graph, adjacency_graph};
 }
