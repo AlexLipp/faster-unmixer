@@ -10,6 +10,7 @@
 
 #include <fstream>
 #include <queue>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 
@@ -20,8 +21,13 @@ std::vector<SampleData> get_sample_data(const std::string &data_dir){
 
   {
     std::ifstream fin(data_dir + "/fitted_samp_locs_no_dupes.dat");
+    std::string header;
     double sx;
     double sy;
+    std::getline(fin, header);
+    if(header!="x_coordinate y_coordinate"){
+      throw std::runtime_error("Unexecpted header '" + header + "' for fitted_samp_locs_no_dupes!");
+    }
     while(fin>>sx>>sy){
       sample_data.emplace_back();
       sample_data.back().x = sx;
