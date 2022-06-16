@@ -19,7 +19,7 @@ std::vector<SampleData> get_sample_data(const std::string &data_dir){
   std::vector<SampleData> sample_data;
 
   {
-    std::ifstream fin(data_dir + "/fitted_samp_locs.dat");
+    std::ifstream fin(data_dir + "/fitted_samp_locs_no_dupes.dat");
     double sx;
     double sy;
     while(fin>>sx>>sy){
@@ -27,6 +27,13 @@ std::vector<SampleData> get_sample_data(const std::string &data_dir){
       sample_data.back().x = sx;
       sample_data.back().y = sy;
     }
+  // {
+  //   std::ifstream fin(data_dir + "/locality_nodes.dat");
+  //   double sx;
+  //   while(fin>>sx){
+  //     sample_data.emplace_back();
+  //     sample_data.back().x = sx;
+  //   }
   }
 
   {
@@ -52,14 +59,14 @@ std::pair<std::vector<SampleNode>, adjacency_graph_t> faster_unmixer(const std::
   // Convert raw flowdirs to RichDEM flowdirs
   auto flowdirs = Array2D<d8_flowdir_t>::make_from_template(arc_flowdirs);
   convert_arc_flowdirs_to_richdem_d8(arc_flowdirs, flowdirs);
-
-  flowdirs.saveGDAL("/z/rd_flowdirs.tif");
+  flowdirs.saveGDAL("rd_flowdirs.tif");
 
   // Get sample locations and put them in a set using flat-indexing for fast
   // look-up
   std::unordered_map<uint32_t, SampleData> sample_locs;
   for(const auto &sample: get_sample_data(data_dir)){
-    sample_locs[flowdirs.xyToI(sample.x, sample.y)] = sample;
+    // sample_locs[sample.x] = sample;
+    sample_locs[flowdirs.xyToI(sample.x, 862-sample.y)] = sample;
   }
 
   // Graph of how the samples are connected together.
@@ -151,7 +158,7 @@ std::pair<std::vector<SampleNode>, adjacency_graph_t> faster_unmixer(const std::
   });
 
   // Save regions output
-  sample_label.saveGDAL("/z/labels.tif");
+  sample_label.saveGDAL("labels.tif");
 
   std::ofstream fout_sg("sample_graph.dot");
   fout_sg<<"# dot -Tpng sample_graph.dot -o sample_graph.png"<<std::endl;
