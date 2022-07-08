@@ -175,7 +175,7 @@ def main():
 
   # Build the objective and constraints
   regularizer_strength = 1e-3
-  objective = cp.norm(cp.vstack(primary_terms))
+  objective = cp.sum(primary_terms)
   if regularizer_terms:
     objective += regularizer_strength * cp.norm(cp.vstack(regularizer_terms))
   constraints = []
@@ -186,9 +186,16 @@ def main():
   # Solvers that can handle this problem type include:
   # ECOS, SCS
   # See: https://www.cvxpy.org/tutorial/advanced/index.html#choosing-a-solver
-  objective_value = problem.solve(solver=cp.SCS, verbose=True, max_iters=10000)
+  solvers = {
+    "scip": {"solver": cp.SCIP, "verbose": True}, # VERY SLOW, probably don't use
+    "ecos": {"solver": cp.ECOS, "verbose": True, "max_iters": 10000},
+    "scs": {"solver": cp.SCS, "verbose": True, "max_iters": 10000},
+  }
+  objective_value = problem.solve(**solvers["ecos"])
+  print(f"Status = {problem.status}")
+  print(f"Objective value = {objective_value}")
 
-  soldf = gio.get_solution_dataframe(sample_network=sample_network, obs_data=obs_data)
+  soldf = get_solution_dataframe(sample_network=sample_network, obs_data=obs_data)
 
   print(soldf)
 
