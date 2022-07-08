@@ -186,9 +186,10 @@ def main():
   # Solvers that can handle this problem type include:
   # ECOS, SCS
   # See: https://www.cvxpy.org/tutorial/advanced/index.html#choosing-a-solver
+  # See: https://www.cvxpy.org/tutorial/advanced/index.html#setting-solver-options
   solvers = {
     "scip": {"solver": cp.SCIP, "verbose": True}, # VERY SLOW, probably don't use
-    "ecos": {"solver": cp.ECOS, "verbose": True, "max_iters": 10000},
+    "ecos": {"solver": cp.ECOS, "verbose": True, "max_iters": 10000, "abstol_inacc": 5e-5, "reltol_inacc": 5e-5, "feastol_inacc": 1e-4},
     "scs": {"solver": cp.SCS, "verbose": True, "max_iters": 10000},
   }
   objective_value = problem.solve(**solvers["ecos"])
