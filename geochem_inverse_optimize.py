@@ -84,6 +84,11 @@ def get_sample_data(data_filename: str) -> Tuple[pd.DataFrame, List[str]]:
   geochem_raw = geochem_raw.drop(columns=['Bi', 'S'])
   # Assume that elements are columns whose names contain 1-2 characters
   element_list = [x for x in geochem_raw.columns if len(x)<=2]
+
+  # NOTE: Choose a subset of elements with similar numeric ranges by eyeballing
+  # the first entry of each element's column in the spreadsheet
+  element_list = ["Li", "Be", "V", "Cr", "Co", "Ni", "Cu", "Ga", "As", "Rb", "Y", "Nb", "La", "Ce", "Nd", "Sm", "Eu", "Gd", "Dy", "Er", "Hf", "Pb", "Th", "U"]
+  geochem_raw = geochem_raw[["Sample.Code"] + element_list]
   return geochem_raw, element_list
 
 
@@ -191,8 +196,9 @@ def main():
     "scip": {"solver": cp.SCIP, "verbose": True}, # VERY SLOW, probably don't use
     "ecos": {"solver": cp.ECOS, "verbose": True, "max_iters": 10000, "abstol_inacc": 5e-5, "reltol_inacc": 5e-5, "feastol_inacc": 1e-4},
     "scs": {"solver": cp.SCS, "verbose": True, "max_iters": 10000},
+    "gurobi": {"solver": cp.GUROBI, "verbose": True, "NumericFocus": 3},
   }
-  objective_value = problem.solve(**solvers["ecos"])
+  objective_value = problem.solve(**solvers["gurobi"])
   print(f"Status = {problem.status}")
   print(f"Objective value = {objective_value}")
 
