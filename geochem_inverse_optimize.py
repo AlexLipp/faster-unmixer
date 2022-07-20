@@ -2,26 +2,21 @@
 
 import os
 import tempfile
-from typing import Any, Dict, Final, List, Tuple
+from typing import Any, Dict, Final, List, Optional, Tuple
 
 import cvxpy as cp
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import networkx as nx
-import numpy as np
 import pandas as pd
 import pyfastunmix
 
+
 NO_DOWNSTREAM: Final[int] = 0
+SAMPLE_CODE: Final[str] = "Sample.Code"
+ELEMENT_LIST: Final[List[str]] = ["H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Uut", "Fl", "Uup", "Lv", "Uus", "Uuo"]
 
-
-def add_concentrations(a: Dict[str, cp.Variable], b: Dict[str, cp.Variable]) -> Dict[str, cp.Variable]:
-  """Add two dictionaries together"""
-  temp: Dict[str, cp.Variable] = {}
-  for e in a.keys():
-    assert e in b.keys(), f"Key {e} from dictionary a was not found in dictionary b!"
-    temp[e] = a[e] + b[e]
-  return temp
+ElementData = Dict[str, float]
 
 
 def cp_log_ratio_norm(a, b):
@@ -43,7 +38,7 @@ def nx_get_downstream(G: nx.DiGraph, x: str) -> str:
     raise Exception("More than one downstream neighbour!")
 
 
-def plot_network(G: nx.DiGraph):
+def plot_network(G: nx.DiGraph) -> None:
   ag = nx.nx_agraph.to_agraph(G)
   ag.layout(prog="dot")
   temp = tempfile.NamedTemporaryFile(delete=False)
@@ -78,56 +73,35 @@ def get_sample_graphs(data_dir: str) -> Tuple[nx.DiGraph, Any]:
   return sample_network, sample_adjacency
 
 
-def get_sample_data(data_filename: str) -> Tuple[pd.DataFrame, List[str]]:
-  geochem_raw = pd.read_csv(data_filename, delimiter=" ")
-  # Delete columns for S and Bi (too many NAs)
-  geochem_raw = geochem_raw.drop(columns=['Bi', 'S'])
-  # Assume that elements are columns whose names contain 1-2 characters
-  element_list = [x for x in geochem_raw.columns if len(x)<=2]
-
-  # NOTE: Choose a subset of elements with similar numeric ranges by eyeballing
-  # the first entry of each element's column in the spreadsheet
-  element_list = ["Li", "Be", "V", "Cr", "Co", "Ni", "Cu", "Ga", "As", "Rb", "Y", "Nb", "La", "Ce", "Nd", "Sm", "Eu", "Gd", "Dy", "Er", "Hf", "Pb", "Th", "U"]
-  geochem_raw = geochem_raw[["Sample.Code"] + element_list]
-  return geochem_raw, element_list
+def reset_sample_network(sample_network: nx.DiGraph) -> None:
+  for _, data in sample_network.nodes(data=True):
+    data['data'].my_value = 0.
+    data['data'].my_flux = 0.
+    data['data'].total_flux = 0.
 
 
-def get_primary_terms(sample_network: nx.DiGraph, obs_data: pd.DataFrame, element_list: List[str]) -> List[Any]:
+def get_primary_terms(sample_network: nx.DiGraph, obs_data: ElementData) -> List[Any]:
   # Build the main objective
   # Use a topological sort to ensure an upstream-to-downstream traversal
   primary_terms = []
   for sample_name, my_data in nx_topological_sort_with_data(sample_network):
-  #     print(f"Processing {my_data.data.name}...")
+    # Set up a CVXPY parameter for each element for each node
+    my_data.my_value = cp.Variable(pos=True)
 
-      # Set up a CVXPY parameter for each element for each node
-      my_data.my_values = {e : cp.Variable(pos=True) for e in element_list}
+    # area weighted contribution from this node
+    my_data.my_flux = my_data.area * my_data.my_value
 
-      # area weighted contribution from this node
-      my_data.my_flux = {e : my_data.area * v for e, v in my_data.my_values.items()}
+    # Add the flux I generate to the total flux passing through me
+    my_data.total_flux += my_data.my_flux
 
-      # If node already receives flux, add this node's contribution to that
-      if hasattr(my_data, "total_flux"):
-          my_data.total_flux = add_concentrations(my_data.my_flux, my_data.total_flux)
-      # If leaf node, set the total flux leaving node as the contribution from this node only
-      else:
-          my_data.total_flux = my_data.my_flux
+    observed = obs_data[my_data.data.name]
+    normalised_concentration = my_data.total_flux/my_data.total_area
+    primary_terms.append(cp_log_ratio_norm(normalised_concentration, observed))
 
-      for element, concentration in my_data.total_flux.items():
-          observed = (obs_data[obs_data["Sample.Code"]==my_data.data.name][element]).values[0]
-          if isinstance(observed, str):
-            continue # TODO: This is here because there's a bad data point at the moment
-          # Convert from a single-value pandas dataframe to a float\
-          normalised_concentration = concentration/my_data.total_area
-          primary_terms.append(cp_log_ratio_norm(normalised_concentration, observed))
-
-      if (ds := nx_get_downstream(sample_network, sample_name)):
-          downstream_data = sample_network.nodes[ds]['data']
-          if hasattr(downstream_data, "total_flux"):
-              # If downstream node already receives flux, add this nodes flux to it
-              downstream_data.total_flux = add_concentrations(my_data.total_flux, downstream_data.total_flux)
-          else:
-              # If not, set the flux received downstream just as the contribution from this node
-              downstream_data.total_flux = my_data.total_flux
+    if (ds := nx_get_downstream(sample_network, sample_name)):
+      downstream_data = sample_network.nodes[ds]['data']
+      # Add our flux to the downstream node's
+      downstream_data.total_flux += my_data.total_flux
 
   return primary_terms
 
@@ -147,39 +121,32 @@ def get_regularizer_terms(sample_network: nx.DiGraph, adjacency_graph) -> List[A
   return regularizer_terms
 
 
-def get_solution_dataframe(sample_network: nx.DiGraph, obs_data: pd.DataFrame) -> pd.DataFrame:
+def get_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
   # Print the solution we found
-  rows = []
+  predictions: ElementData = {}
   for sample_name, data in sample_network.nodes(data=True):
     data = data['data']
-    row = {}
-    row["sample_name"] = sample_name
-    for element, flux in data.total_flux.items():
-      row[f"{element}_obs"] = (obs_data[obs_data["Sample.Code"]==sample_name][element]).values[0]
-      if not flux.value:
-        print(f"WARNING: No flux.value for {sample_name}-{element}!")
-      row[f"{element}_pred"] = flux.value / data.total_area if flux.value else None
-    rows.append(row)
+    predictions[sample_name] = data.total_flux.value / data.total_area
 
-  return pd.DataFrame(rows)
+  return predictions
 
 
-def main():
-  sample_network, sample_adjacency = get_sample_graphs("data/")
+def process_element(
+  sample_network: nx.DiGraph,
+  sample_adjacency: Any,
+  obs_data: ElementData,
+  regularizer_strength: float = 1e-3
+) -> ElementData:
+  # Make a deep copy to avoid over-writing the original data
+  reset_sample_network(sample_network)
 
-  plot_network(sample_network)
-
-  obs_data, element_list = get_sample_data("data/geochem_no_dupes.dat")
-
-  primary_terms = get_primary_terms(sample_network=sample_network, obs_data=obs_data, element_list=element_list)
+  primary_terms = get_primary_terms(sample_network=sample_network, obs_data=obs_data)
 
   regularizer_terms = get_regularizer_terms(sample_network=sample_network, adjacency_graph=sample_adjacency)
-
   if not regularizer_terms:
     print("WARNING: No regularizer terms found!")
 
   # Build the objective and constraints
-  regularizer_strength = 1e-3
   objective = cp.sum(primary_terms)
   if regularizer_terms:
     objective += regularizer_strength * cp.norm(cp.vstack(regularizer_terms))
@@ -188,6 +155,7 @@ def main():
   # Create and solve the problem
   print("Compiling and solving problem...")
   problem = cp.Problem(cp.Minimize(objective), constraints)
+
   # Solvers that can handle this problem type include:
   # ECOS, SCS
   # See: https://www.cvxpy.org/tutorial/advanced/index.html#choosing-a-solver
@@ -196,15 +164,59 @@ def main():
     "scip": {"solver": cp.SCIP, "verbose": True}, # VERY SLOW, probably don't use
     "ecos": {"solver": cp.ECOS, "verbose": True, "max_iters": 10000, "abstol_inacc": 5e-5, "reltol_inacc": 5e-5, "feastol_inacc": 1e-4},
     "scs": {"solver": cp.SCS, "verbose": True, "max_iters": 10000},
-    "gurobi": {"solver": cp.GUROBI, "verbose": True, "NumericFocus": 3},
+    "gurobi": {"solver": cp.GUROBI, "verbose": False, "NumericFocus": 3},
   }
-  objective_value = problem.solve(**solvers["gurobi"])
-  print(f"Status = {problem.status}")
+  objective_value = problem.solve(**solvers["ecos"])
+  print("{color}Status = {status}\033[39m".format(
+    color="" if problem.status == "optimal" else "\033[91m",
+    status=problem.status
+  ))
   print(f"Objective value = {objective_value}")
 
-  soldf = get_solution_dataframe(sample_network=sample_network, obs_data=obs_data)
+  return get_prediction_dictionary(sample_network=sample_network)
 
-  print(soldf)
+
+def process_data(data_dir: str, data_filename: str, excluded_elements: Optional[List[str]] = None) -> pd.DataFrame:
+  sample_network, sample_adjacency = get_sample_graphs(data_dir)
+
+  plot_network(sample_network)
+
+  obs_data = pd.read_csv(data_filename, delimiter=" ")
+  obs_data = obs_data.drop(columns=excluded_elements)
+
+  results = None
+  for element in ELEMENT_LIST[0:20]:
+    if element not in obs_data.columns:
+      continue
+
+    print(f"\n\033[94mProcessing element '{element}'...\033[39m")
+
+    element_data: ElementData = {
+      e:c for e, c in zip(obs_data[SAMPLE_CODE].tolist(), obs_data[element].tolist())
+      if isinstance(c, float)
+    }
+
+    try:
+      predictions = process_element(sample_network=sample_network, sample_adjacency=sample_adjacency, obs_data=element_data)
+    except cp.error.SolverError as err:
+      print(f"\033[91mSolver Error - skipping this element!\n{err}")
+      continue
+
+    if results is None:
+      results = pd.DataFrame(element_data.keys())
+    results[element+"_obs"] = obs_data[element].tolist()
+    results[element+"_prd"] = predictions.values()
+
+  return results
+
+
+def main():
+  results = process_data(
+    data_dir="data/",
+    data_filename="data/geochem_no_dupes.dat",
+    excluded_elements=['Bi', 'S']
+  )
+  print(results)
 
 
 if __name__ == "__main__":
