@@ -4,6 +4,7 @@ import os
 import tempfile
 from typing import Any, Dict, Final, List, Optional, Tuple
 
+# TODO(rbarnes): Make a requirements file for conda
 import cvxpy as cp
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -89,6 +90,7 @@ def get_primary_terms(sample_network: nx.DiGraph, obs_data: ElementData) -> List
     my_data.my_value = cp.Variable(pos=True)
 
     # area weighted contribution from this node
+    # TODO(rbarnes): Try scaling area of a region by dividing by total area of all regions. `my_data.normalized_area`
     my_data.my_flux = my_data.area * my_data.my_value
 
     # Add the flux I generate to the total flux passing through me
@@ -117,6 +119,7 @@ def get_regularizer_terms(sample_network: nx.DiGraph, adjacency_graph) -> List[A
   #     assert e in b_data.my_concentrations.keys()
   #     a_concen = a_data.my_concentrations[e]
   #     b_concen = b_data.my_concentrations[e]
+  # TODO(r-barnes) replace regularizer misfit with log-ratio substitute
   #     regularizer_terms.append(border_length * (a_concen-b_concen))
   return regularizer_terms
 
@@ -131,6 +134,7 @@ def get_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
   return predictions
 
 
+# TODO(rbarnes): Might need a per-element lambda value for the regularizer to find the elbow
 def process_element(
   sample_network: nx.DiGraph,
   sample_adjacency: Any,
@@ -147,9 +151,11 @@ def process_element(
     print("WARNING: No regularizer terms found!")
 
   # Build the objective and constraints
-  objective = cp.sum(primary_terms)
+  # TODO(alexlipp,r-barnes): Should this be a cp.norm(cp.vstack(primary_terms)) to get squaring or should the square happen in the log or should there be no square?
+  objective = cp.sum(primary_terms)  
   if regularizer_terms:
-    objective += regularizer_strength * cp.norm(cp.vstack(regularizer_terms))
+    # TODO(alexlipp,r-barnes): Make sure that his uses the same summation strategy as the primary terms
+    objective += regularizer_strength * cp.norm(cp.vstack(regularizer_terms)) 
   constraints = []
 
   # Create and solve the problem
@@ -180,17 +186,19 @@ def process_data(data_dir: str, data_filename: str, excluded_elements: Optional[
   sample_network, sample_adjacency = get_sample_graphs(data_dir)
 
   plot_network(sample_network)
-
-  obs_data = pd.read_csv(data_filename, delimiter=" ")
+  # TODO(alexlipp): Normalise element by elemental mean.
+  obs_data = pd.read_csv(data_filename, delimiter=" ") 
   obs_data = obs_data.drop(columns=excluded_elements)
 
   results = None
-  for element in ELEMENT_LIST[0:20]:
+  # TODO(r-barnes,alexlipp): Loop over all elements once we achieve acceptable results
+  for element in ELEMENT_LIST[0:20]: 
     if element not in obs_data.columns:
       continue
 
     print(f"\n\033[94mProcessing element '{element}'...\033[39m")
 
+    # TODO(rbarnes): remove the `isinstance`
     element_data: ElementData = {
       e:c for e, c in zip(obs_data[SAMPLE_CODE].tolist(), obs_data[element].tolist())
       if isinstance(c, float)
@@ -209,6 +217,7 @@ def process_data(data_dir: str, data_filename: str, excluded_elements: Optional[
 
   return results
 
+# TODO(alexlipp): Generate normalise/renormalise data functions, that output list of means
 
 def main():
   results = process_data(
