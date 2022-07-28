@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
 import pyfastunmix
+import numpy as np
 
 
 NO_DOWNSTREAM: Final[int] = 0
@@ -121,7 +122,7 @@ def get_regularizer_terms(sample_network: nx.DiGraph, adjacency_graph) -> List[A
   return regularizer_terms
 
 
-def get_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
+def get_downstream_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
   # Print the solution we found
   predictions: ElementData = {}
   for sample_name, data in sample_network.nodes(data=True):
@@ -130,6 +131,66 @@ def get_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
 
   return predictions    
 
+def get_upstream_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
+  # Get the predicted upstream concentration we found
+  predictions: ElementData = {}
+  for sample_name, data in sample_network.nodes(data=True):
+    data = data['data']
+    predictions[sample_name] = data.my_value.value
+  return predictions  
+
+def get_element_obs(element: str, obs_data: pd.DataFrame)->ElementData:
+    element_data: ElementData = {
+      e:c for e, c in zip(obs_data[SAMPLE_CODE].tolist(), obs_data[element].tolist())
+      if isinstance(c, float)
+    }
+    return(element_data)
+
+def get_unique_upstream_areas(sample_network):
+    """Generates a dictionary which maps sample numbers onto 
+    the unique upstream area (as a boolean mask)
+    for the sample site."""
+    I = plt.imread('labels.tif')[:,:,0] # ,
+    areas = {}
+    counter=1
+    for node in sample_network.nodes:
+        areas[node] = (I==(counter))
+        counter+=1
+    return(areas)
+    
+def get_upstream_concentration_map(areas,upstream_preds):
+    """Generates a two-dimensional map displaying the predicted upstream 
+    concentration for a given element for each unique upstream area.
+        areas: Dictionary mapping sample numbers onto a boolean mask 
+               (see `get_unique_upstream_areas`)
+        upstream_preds: Dictionary of predicted upstream concentrations
+               (see `get_upstream_prediction_dictionary`)
+        elem: String of element symbol"""
+    
+    out=np.zeros(list(areas.values())[0].shape) # initialise output
+    for sample_name,value in upstream_preds.items():
+        out[areas[sample_name]]+=value
+    return(out) 
+
+def visualise_downstream(pred_dict,obs_dict,element):
+    obs=[]
+    pred=[]
+    for sample in obs_dict.keys():
+        obs+=[obs_dict[sample]]
+        pred+=[pred_dict[sample]]
+    obs=np.asarray(obs)
+    pred=np.asarray(pred)
+    plt.scatter(x=obs,y=pred)
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.xlabel("Observed "+element+" concentration mg/kg")
+    plt.ylabel("Predicted "+element+" concentration mg/kg")
+    plt.plot([0,1e6],[0,1e6],alpha=0.5,color='grey')
+    plt.xlim((np.amin(obs*0.9),np.amax(obs*1.1)))
+    plt.ylim((np.amin(pred*0.9),np.amax(pred*1.1)))    
+    ax=plt.gca()
+    ax.set_aspect(1)
+    
 # TODO(rbarnes): Might need a per-element lambda value for the regularizer to find the elbow
 def process_element(
   sample_network: nx.DiGraph,
@@ -175,15 +236,8 @@ def process_element(
   ))
   print(f"Objective value = {objective_value}")
 
-  return get_prediction_dictionary(sample_network=sample_network)
-
-
-def get_element_obs(element: str, obs_data: pd.DataFrame)->ElementData:
-    element_data: ElementData = {
-      e:c for e, c in zip(obs_data[SAMPLE_CODE].tolist(), obs_data[element].tolist())
-      if isinstance(c, float)
-    }
-    return(element_data)
+  return get_downstream_prediction_dictionary(sample_network=sample_network),get_upstream_prediction_dictionary(sample_network=sample_network)
+    
 
 def process_data(data_dir: str, data_filename: str, excluded_elements: Optional[List[str]] = None) -> pd.DataFrame:
   sample_network, sample_adjacency = get_sample_graphs(data_dir)
