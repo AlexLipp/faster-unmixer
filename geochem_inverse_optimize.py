@@ -19,14 +19,11 @@ ELEMENT_LIST: Final[List[str]] = ["H", "He", "Li", "Be", "B", "C", "N", "O", "F"
 
 ElementData = Dict[str, float]
 
-
 def cp_log_ratio_norm(a, b):
   return cp.maximum(a/b, b * cp.inv_pos(a))
 
-
 def nx_topological_sort_with_data(G: nx.DiGraph):
   return ((x, G.nodes[x]['data']) for x in nx.topological_sort(G))
-
 
 def nx_get_downstream(G: nx.DiGraph, x: str) -> str:
   """Gets the downstream child from a node with only one child"""
@@ -131,8 +128,7 @@ def get_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
     data = data['data']
     predictions[sample_name] = data.total_flux.value / data.total_area
 
-  return predictions
-
+  return predictions    
 
 # TODO(rbarnes): Might need a per-element lambda value for the regularizer to find the elbow
 def process_element(
@@ -181,6 +177,13 @@ def process_element(
 
   return get_prediction_dictionary(sample_network=sample_network)
 
+
+def get_element_obs(element: str, obs_data: pd.DataFrame)->ElementData:
+    element_data: ElementData = {
+      e:c for e, c in zip(obs_data[SAMPLE_CODE].tolist(), obs_data[element].tolist())
+      if isinstance(c, float)
+    }
+    return(element_data)
 
 def process_data(data_dir: str, data_filename: str, excluded_elements: Optional[List[str]] = None) -> pd.DataFrame:
   sample_network, sample_adjacency = get_sample_graphs(data_dir)
