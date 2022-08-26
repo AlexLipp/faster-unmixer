@@ -9,9 +9,9 @@ import cvxpy as cp
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 import pandas as pd
 import pyfastunmix
-import numpy as np
 
 
 NO_DOWNSTREAM: Final[int] = 0
@@ -20,11 +20,14 @@ ELEMENT_LIST: Final[List[str]] = ["H", "He", "Li", "Be", "B", "C", "N", "O", "F"
 
 ElementData = Dict[str, float]
 
+
 def cp_log_ratio_norm(a, b):
   return cp.maximum(a/b, b * cp.inv_pos(a))
 
+
 def nx_topological_sort_with_data(G: nx.DiGraph):
   return ((x, G.nodes[x]['data']) for x in nx.topological_sort(G))
+
 
 def nx_get_downstream(G: nx.DiGraph, x: str) -> str:
   """Gets the downstream child from a node with only one child"""
@@ -94,7 +97,9 @@ def get_primary_terms(sample_network: nx.DiGraph, obs_data: ElementData) -> List
     # Add the flux I generate to the total flux passing through me
     my_data.total_flux += my_data.my_flux
 
-    observed = obs_data[my_data.data.name]
+    # Normalise observation by mean
+    obs_mean = np.mean(list(obs_data.values()))
+    observed = obs_data[my_data.data.name] / obs_mean
     normalised_concentration = my_data.total_flux/my_data.total_area
     primary_terms.append(cp_log_ratio_norm(normalised_concentration, observed))
 
@@ -129,7 +134,8 @@ def get_downstream_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataF
     data = data['data']
     predictions[sample_name] = data.total_flux.value / data.total_area
 
-  return predictions    
+  return predictions
+
 
 def get_upstream_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
   # Get the predicted upstream concentration we found
@@ -137,40 +143,44 @@ def get_upstream_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFra
   for sample_name, data in sample_network.nodes(data=True):
     data = data['data']
     predictions[sample_name] = data.my_value.value
-  return predictions  
+  return predictions
+
 
 def get_element_obs(element: str, obs_data: pd.DataFrame)->ElementData:
     element_data: ElementData = {
       e:c for e, c in zip(obs_data[SAMPLE_CODE].tolist(), obs_data[element].tolist())
       if isinstance(c, float)
     }
-    return(element_data)
+    return element_data
+
 
 def get_unique_upstream_areas(sample_network):
-    """Generates a dictionary which maps sample numbers onto 
+    """Generates a dictionary which maps sample numbers onto
     the unique upstream area (as a boolean mask)
     for the sample site."""
     I = plt.imread('labels.tif')[:,:,0] # ,
     areas = {}
     counter=1
     for node in sample_network.nodes:
-        areas[node] = (I==(counter))
+        areas[node] = (I==counter)
         counter+=1
-    return(areas)
-    
+    return areas
+
+
 def get_upstream_concentration_map(areas,upstream_preds):
-    """Generates a two-dimensional map displaying the predicted upstream 
+    """Generates a two-dimensional map displaying the predicted upstream
     concentration for a given element for each unique upstream area.
-        areas: Dictionary mapping sample numbers onto a boolean mask 
+        areas: Dictionary mapping sample numbers onto a boolean mask
                (see `get_unique_upstream_areas`)
         upstream_preds: Dictionary of predicted upstream concentrations
                (see `get_upstream_prediction_dictionary`)
         elem: String of element symbol"""
-    
+
     out=np.zeros(list(areas.values())[0].shape) # initialise output
     for sample_name,value in upstream_preds.items():
         out[areas[sample_name]]+=value
-    return(out) 
+    return out
+
 
 def visualise_downstream(pred_dict,obs_dict,element):
     obs=[]
@@ -187,10 +197,11 @@ def visualise_downstream(pred_dict,obs_dict,element):
     plt.ylabel("Predicted "+element+" concentration mg/kg")
     plt.plot([0,1e6],[0,1e6],alpha=0.5,color='grey')
     plt.xlim((np.amin(obs*0.9),np.amax(obs*1.1)))
-    plt.ylim((np.amin(pred*0.9),np.amax(pred*1.1)))    
+    plt.ylim((np.amin(pred*0.9),np.amax(pred*1.1)))
     ax=plt.gca()
     ax.set_aspect(1)
-    
+
+
 # TODO(rbarnes): Might need a per-element lambda value for the regularizer to find the elbow
 def process_element(
   sample_network: nx.DiGraph,
@@ -208,11 +219,10 @@ def process_element(
     print("WARNING: No regularizer terms found!")
 
   # Build the objective and constraints
-  # TODO(alexlipp,r-barnes): Should this be a cp.norm(cp.vstack(primary_terms)) to get squaring or should the square happen in the log or should there be no square?
-  objective = cp.sum(primary_terms)  
+  objective = cp.norm(primary_terms)
   if regularizer_terms:
     # TODO(alexlipp,r-barnes): Make sure that his uses the same summation strategy as the primary terms
-    objective += regularizer_strength * cp.norm(cp.vstack(regularizer_terms)) 
+    objective += regularizer_strength * cp.norm(cp.vstack(regularizer_terms))
   constraints = []
 
   # Create and solve the problem
@@ -235,21 +245,24 @@ def process_element(
     status=problem.status
   ))
   print(f"Objective value = {objective_value}")
+  # Return outputs
+  obs_mean = np.mean(list(obs_data.values()))
+  downstream_preds = get_prediction_dictionary(sample_network=sample_network)
+  downstream_preds.update((sample, value*obs_mean) for sample, value in downstream_preds.items())
 
   return get_downstream_prediction_dictionary(sample_network=sample_network),get_upstream_prediction_dictionary(sample_network=sample_network)
-    
+
 
 def process_data(data_dir: str, data_filename: str, excluded_elements: Optional[List[str]] = None) -> pd.DataFrame:
   sample_network, sample_adjacency = get_sample_graphs(data_dir)
 
   plot_network(sample_network)
-  # TODO(alexlipp): Normalise element by elemental mean.
-  obs_data = pd.read_csv(data_filename, delimiter=" ") 
+  obs_data = pd.read_csv(data_filename, delimiter=" ")
   obs_data = obs_data.drop(columns=excluded_elements)
 
   results = None
   # TODO(r-barnes,alexlipp): Loop over all elements once we achieve acceptable results
-  for element in ELEMENT_LIST[0:20]: 
+  for element in ELEMENT_LIST[0:20]:
     if element not in obs_data.columns:
       continue
 
@@ -269,12 +282,11 @@ def process_data(data_dir: str, data_filename: str, excluded_elements: Optional[
 
     if results is None:
       results = pd.DataFrame(element_data.keys())
-    results[element+"_obs"] = obs_data[element].tolist()
-    results[element+"_prd"] = predictions.values()
+    results[element+"_obs"] = [element_data[element] for element in element_data.keys()]
+    results[element+"_dwnst_prd"] = [predictions[element] for element in element_data.keys()]
 
   return results
 
-# TODO(alexlipp): Generate normalise/renormalise data functions, that output list of means
 
 def main():
   results = process_data(
