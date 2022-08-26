@@ -155,7 +155,7 @@ def get_element_obs(element: str, obs_data: pd.DataFrame) -> ElementData:
     return element_data
 
 
-def get_unique_upstream_areas(sample_network):
+def get_unique_upstream_areas(sample_network: nx.DiGraph):
     """Generates a dictionary which maps sample numbers onto
     the unique upstream area (as a boolean mask)
     for the sample site."""
@@ -183,7 +183,7 @@ def get_upstream_concentration_map(areas, upstream_preds):
     return out
 
 
-def visualise_downstream(pred_dict, obs_dict, element):
+def visualise_downstream(pred_dict, obs_dict, element: str) -> None:
     obs = []
     pred = []
     for sample in obs_dict.keys():
