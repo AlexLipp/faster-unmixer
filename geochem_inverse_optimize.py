@@ -219,7 +219,7 @@ def process_element(
     print("WARNING: No regularizer terms found!")
 
   # Build the objective and constraints
-  objective = cp.norm(primary_terms)
+  objective = cp.norm(cp.vstack(primary_terms))
   if regularizer_terms:
     # TODO(alexlipp,r-barnes): Make sure that his uses the same summation strategy as the primary terms
     objective += regularizer_strength * cp.norm(cp.vstack(regularizer_terms))
@@ -247,10 +247,10 @@ def process_element(
   print(f"Objective value = {objective_value}")
   # Return outputs
   obs_mean = np.mean(list(obs_data.values()))
-  downstream_preds = get_prediction_dictionary(sample_network=sample_network)
+  downstream_preds = get_downstream_prediction_dictionary(sample_network=sample_network)
   downstream_preds.update((sample, value*obs_mean) for sample, value in downstream_preds.items())
 
-  return get_downstream_prediction_dictionary(sample_network=sample_network),get_upstream_prediction_dictionary(sample_network=sample_network)
+  return downstream_preds
 
 
 def process_data(data_dir: str, data_filename: str, excluded_elements: Optional[List[str]] = None) -> pd.DataFrame:
@@ -282,8 +282,8 @@ def process_data(data_dir: str, data_filename: str, excluded_elements: Optional[
 
     if results is None:
       results = pd.DataFrame(element_data.keys())
-    results[element+"_obs"] = [element_data[element] for element in element_data.keys()]
-    results[element+"_dwnst_prd"] = [predictions[element] for element in element_data.keys()]
+    results[element+"_obs"] = [element_data[sample] for sample in element_data.keys()]
+    results[element+"_dwnst_prd"] = [predictions[sample] for sample in element_data.keys()]
 
   return results
 
