@@ -15,7 +15,7 @@ import pandas as pd
 import pyfastunmix
 
 NO_DOWNSTREAM: Final[int] = 0
-SAMPLE_CODE: Final[str] = "Sample.Code"
+SAMPLE_CODE_COL_NAME: Final[str] = "Sample.Code"
 ELEMENT_LIST: Final[List[str]] = ["H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Uut", "Fl", "Uup", "Lv", "Uus", "Uuo"]  # fmt: skip
 
 ElementData = Dict[str, float]
@@ -75,56 +75,132 @@ def get_sample_graphs(data_dir: str) -> Tuple[nx.DiGraph, Any]:
     return sample_network, sample_adjacency
 
 
-def reset_sample_network(sample_network: nx.DiGraph) -> None:
-    for _, data in sample_network.nodes(data=True):
-        data["data"].my_value = 0.0
-        data["data"].my_flux = 0.0
-        data["data"].total_flux = 0.0
+class SampleNetwork:
+    def __init__(self, sample_network: nx.DiGraph) -> None:
+        self.sample_network = sample_network
+        self._site_to_parameter: Dict[str, cp.Parameter] = {}
+        self._primary_terms = []
+        self._regularizer_terms = []
+        self._regularizer_strength = cp.Parameter(nonneg=True)
+        self._problem = None
+        self._build_primary_terms()
+        self._build_regularizer_terms()
+        self._build_problem()
 
+    def _build_primary_terms(self) -> None:
+        for _, data in self.sample_network.nodes(data=True):
+            data["data"].total_flux = 0.0
 
-def get_primary_terms(sample_network: nx.DiGraph, obs_data: ElementData) -> List[Any]:
-    # Build the main objective
-    # Use a topological sort to ensure an upstream-to-downstream traversal
-    primary_terms = []
-    for sample_name, my_data in nx_topological_sort_with_data(sample_network):
-        # Set up a CVXPY parameter for each element for each node
-        my_data.my_value = cp.Variable(pos=True)
+        # Build the main objective
+        # Use a topological sort to ensure an upstream-to-downstream traversal
+        for sample_name, my_data in nx_topological_sort_with_data(self.sample_network):
+            # Set up a CVXPY parameter for each element for each node
+            my_data.my_value = cp.Variable(pos=True)
 
-        # area weighted contribution from this node
-        # TODO(rbarnes): Try scaling area of a region by dividing by total area of all regions. `my_data.normalized_area`
-        my_data.my_flux = my_data.area * my_data.my_value
+            # area weighted contribution from this node
+            # TODO(rbarnes): Try scaling area of a region by dividing by total area of all regions. `my_data.normalized_area`
+            my_data.my_flux = my_data.area * my_data.my_value
 
-        # Add the flux I generate to the total flux passing through me
-        my_data.total_flux += my_data.my_flux
+            # Add the flux I generate to the total flux passing through me
+            my_data.total_flux += my_data.my_flux
 
-        # Normalise observation by mean
-        obs_mean = np.mean(list(obs_data.values()))
-        observed = obs_data[my_data.data.name] / obs_mean
-        normalised_concentration = my_data.total_flux / my_data.total_area
-        primary_terms.append(cp_log_ratio_norm(normalised_concentration, observed))
+            # Normalise observation by mean
+            observed = cp.Parameter(pos=True)
+            self._site_to_parameter[my_data.data.name] = observed
+            normalised_concentration = my_data.total_flux / my_data.total_area
+            self._primary_terms.append(cp_log_ratio_norm(normalised_concentration, observed))
 
-        if ds := nx_get_downstream(sample_network, sample_name):
-            downstream_data = sample_network.nodes[ds]["data"]
-            # Add our flux to the downstream node's
-            downstream_data.total_flux += my_data.total_flux
+            if ds := nx_get_downstream(self.sample_network, sample_name):
+                downstream_data = self.sample_network.nodes[ds]["data"]
+                # Add our flux to the downstream node's
+                downstream_data.total_flux += my_data.total_flux
 
-    return primary_terms
+    def _build_regularizer_terms(self) -> None:
+        # sample_network=sample_network, adjacency_graph=sample_adjacency
+        # Build the regularizer
+        regularizer_terms = []
+        # for adjacent_nodes, border_length in sample_adjacency.items():
+        #   node_a, node_b = adjacent_nodes
+        #   a_data = sample_network.nodes[node_a]['data']
+        #   b_data = sample_network.nodes[node_b]['data']
+        #   for e in a_data.my_concentrations.keys():
+        #     assert e in b_data.my_concentrations.keys()
+        #     a_concen = a_data.my_concentrations[e]
+        #     b_concen = b_data.my_concentrations[e]
+        # TODO(r-barnes) replace regularizer misfit with log-ratio substitute
+        #     regularizer_terms.append(border_length * (a_concen-b_concen))
+        return regularizer_terms
 
+    def _build_problem(self) -> None:
+        assert self._primary_terms
 
-def get_regularizer_terms(sample_network: nx.DiGraph, adjacency_graph) -> List[Any]:
-    # Build the regularizer
-    regularizer_terms = []
-    # for adjacent_nodes, border_length in sample_adjacency.items():
-    #   node_a, node_b = adjacent_nodes
-    #   a_data = sample_network.nodes[node_a]['data']
-    #   b_data = sample_network.nodes[node_b]['data']
-    #   for e in a_data.my_concentrations.keys():
-    #     assert e in b_data.my_concentrations.keys()
-    #     a_concen = a_data.my_concentrations[e]
-    #     b_concen = b_data.my_concentrations[e]
-    # TODO(r-barnes) replace regularizer misfit with log-ratio substitute
-    #     regularizer_terms.append(border_length * (a_concen-b_concen))
-    return regularizer_terms
+        if not self._regularizer_terms:
+            print("WARNING: No regularizer terms found!")
+
+        # Build the objective and constraints
+        objective = cp.norm(cp.vstack(self._primary_terms))
+        if self._regularizer_terms:
+            # TODO(alexlipp,r-barnes): Make sure that his uses the same summation strategy as the primary terms
+            objective += self._regularizer_strength * cp.norm(cp.vstack(self._regularizer_terms))
+        constraints = []
+
+        # Create and solve the problem
+        print("Compiling problem...")
+        self._problem = cp.Problem(cp.Minimize(objective), constraints)
+
+    def solve(
+        self,
+        observation_data: ElementData,
+        regularization_strength: Optional[float] = None,
+        solver: str = "gurobi",
+    ):
+        obs_mean = np.mean(list(observation_data.values()))
+
+        # Reset all sites' observations
+        for x in self._site_to_parameter.values():
+            x.value = None
+        # Assign each observed value to a site, making sure that the site exists
+        for site, value in observation_data.items():
+            assert site in self._site_to_parameter
+            self._site_to_parameter[site].value = value / obs_mean
+        # Ensure that all sites in the problem were assigned
+        for x in self._site_to_parameter.values():
+            assert x.value is not None
+
+        self._regularizer_strength.value = regularization_strength
+
+        # Solvers that can handle this problem type include:
+        # ECOS, SCS
+        # See: https://www.cvxpy.org/tutorial/advanced/index.html#choosing-a-solver
+        # See: https://www.cvxpy.org/tutorial/advanced/index.html#setting-solver-options
+        solvers = {
+            "scip": {"solver": cp.SCIP, "verbose": True},  # VERY SLOW, probably don't use
+            "ecos": {
+                "solver": cp.ECOS,
+                "verbose": True,
+                "max_iters": 10000,
+                "abstol_inacc": 5e-5,
+                "reltol_inacc": 5e-5,
+                "feastol_inacc": 1e-4,
+            },
+            "scs": {"solver": cp.SCS, "verbose": True, "max_iters": 10000},
+            "gurobi": {"solver": cp.GUROBI, "verbose": False, "NumericFocus": 3},
+        }
+        objective_value = self._problem.solve(**solvers[solver])
+        print(
+            "{color}Status = {status}\033[39m".format(
+                color="" if self._problem.status == "optimal" else "\033[91m",
+                status=self._problem.status,
+            )
+        )
+        print(f"Objective value = {objective_value}")
+        # Return outputs
+        downstream_preds = get_downstream_prediction_dictionary(sample_network=self.sample_network)
+        downstream_preds.update(
+            (sample, value * obs_mean) for sample, value in downstream_preds.items()
+        )
+
+        return downstream_preds
 
 
 def get_downstream_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
@@ -147,9 +223,10 @@ def get_upstream_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFra
 
 
 def get_element_obs(element: str, obs_data: pd.DataFrame) -> ElementData:
+    # TODO(rbarnes): remove the `isinstance`
     element_data: ElementData = {
         e: c
-        for e, c in zip(obs_data[SAMPLE_CODE].tolist(), obs_data[element].tolist())
+        for e, c in zip(obs_data[SAMPLE_CODE_COL_NAME].tolist(), obs_data[element].tolist())
         if isinstance(c, float)
     }
     return element_data
@@ -203,69 +280,6 @@ def visualise_downstream(pred_dict, obs_dict, element: str) -> None:
     ax.set_aspect(1)
 
 
-# TODO(rbarnes): Might need a per-element lambda value for the regularizer to find the elbow
-def process_element(
-    sample_network: nx.DiGraph,
-    sample_adjacency: Any,
-    obs_data: ElementData,
-    regularizer_strength: float = 1e-3,
-) -> ElementData:
-    # Make a deep copy to avoid over-writing the original data
-    reset_sample_network(sample_network)
-
-    primary_terms = get_primary_terms(sample_network=sample_network, obs_data=obs_data)
-
-    regularizer_terms = get_regularizer_terms(
-        sample_network=sample_network, adjacency_graph=sample_adjacency
-    )
-    if not regularizer_terms:
-        print("WARNING: No regularizer terms found!")
-
-    # Build the objective and constraints
-    objective = cp.norm(cp.vstack(primary_terms))
-    if regularizer_terms:
-        # TODO(alexlipp,r-barnes): Make sure that his uses the same summation strategy as the primary terms
-        objective += regularizer_strength * cp.norm(cp.vstack(regularizer_terms))
-    constraints = []
-
-    # Create and solve the problem
-    print("Compiling and solving problem...")
-    problem = cp.Problem(cp.Minimize(objective), constraints)
-
-    # Solvers that can handle this problem type include:
-    # ECOS, SCS
-    # See: https://www.cvxpy.org/tutorial/advanced/index.html#choosing-a-solver
-    # See: https://www.cvxpy.org/tutorial/advanced/index.html#setting-solver-options
-    solvers = {
-        "scip": {"solver": cp.SCIP, "verbose": True},  # VERY SLOW, probably don't use
-        "ecos": {
-            "solver": cp.ECOS,
-            "verbose": True,
-            "max_iters": 10000,
-            "abstol_inacc": 5e-5,
-            "reltol_inacc": 5e-5,
-            "feastol_inacc": 1e-4,
-        },
-        "scs": {"solver": cp.SCS, "verbose": True, "max_iters": 10000},
-        "gurobi": {"solver": cp.GUROBI, "verbose": False, "NumericFocus": 3},
-    }
-    objective_value = problem.solve(**solvers["ecos"])
-    print(
-        "{color}Status = {status}\033[39m".format(
-            color="" if problem.status == "optimal" else "\033[91m", status=problem.status
-        )
-    )
-    print(f"Objective value = {objective_value}")
-    # Return outputs
-    obs_mean = np.mean(list(obs_data.values()))
-    downstream_preds = get_downstream_prediction_dictionary(sample_network=sample_network)
-    downstream_preds.update(
-        (sample, value * obs_mean) for sample, value in downstream_preds.items()
-    )
-
-    return downstream_preds
-
-
 def process_data(
     data_dir: str, data_filename: str, excluded_elements: Optional[List[str]] = None
 ) -> pd.DataFrame:
@@ -275,6 +289,8 @@ def process_data(
     obs_data = pd.read_csv(data_filename, delimiter=" ")
     obs_data = obs_data.drop(columns=excluded_elements)
 
+    problem = SampleNetwork(sample_network=sample_network)
+
     results = None
     # TODO(r-barnes,alexlipp): Loop over all elements once we achieve acceptable results
     for element in ELEMENT_LIST[0:20]:
@@ -283,19 +299,10 @@ def process_data(
 
         print(f"\n\033[94mProcessing element '{element}'...\033[39m")
 
-        # TODO(rbarnes): remove the `isinstance`
-        element_data: ElementData = {
-            e: c
-            for e, c in zip(obs_data[SAMPLE_CODE].tolist(), obs_data[element].tolist())
-            if isinstance(c, float)
-        }
+        element_data = get_element_obs(element=element, obs_data=obs_data)
 
         try:
-            predictions = process_element(
-                sample_network=sample_network,
-                sample_adjacency=sample_adjacency,
-                obs_data=element_data,
-            )
+            predictions = problem.solve(element_data)
         except cp.error.SolverError as err:
             print(f"\033[91mSolver Error - skipping this element!\n{err}")
             continue
