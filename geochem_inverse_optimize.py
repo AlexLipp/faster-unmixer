@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from typing import Any, Dict, Final, List, Optional, Tuple
+from typing import Dict, Final, Iterator, List, Optional, Tuple
 
 # TODO(rbarnes): Make a requirements file for conda
 import cvxpy as cp
@@ -25,13 +25,13 @@ def cp_log_ratio_norm(a, b):
     return cp.maximum(a / b, b * cp.inv_pos(a))
 
 
-def nx_topological_sort_with_data(G: nx.DiGraph):
+def nx_topological_sort_with_data(G: nx.DiGraph) -> Iterator[Tuple[str, pyfastunmix.SampleNode]]:
     return ((x, G.nodes[x]["data"]) for x in nx.topological_sort(G))
 
 
-def nx_get_downstream(G: nx.DiGraph, x: str) -> str:
+def nx_get_downstream(G: nx.DiGraph, x: str) -> Optional[str]:
     """Gets the downstream child from a node with only one child"""
-    s = list(G.successors(x))
+    s: List[str] = list(G.successors(x))
     if len(s) == 0:
         return None
     elif len(s) == 1:
@@ -52,31 +52,26 @@ def plot_network(G: nx.DiGraph) -> None:
     os.remove(tempname)
 
 
-def get_sample_graphs(data_dir: str) -> Tuple[nx.DiGraph, Any]:
+def get_sample_graphs(data_dir: str) -> Tuple[nx.DiGraph, "pyfastunmix.SampleAdjacency"]:
     # Get the graph representations of the data
     sample_network_raw, sample_adjacency = pyfastunmix.fastunmix(data_dir)
 
-    ids_to_names: Dict[int, str] = {i: data.data.name for i, data in enumerate(sample_network_raw)}
-
     # Convert it into a networkx graph for easy use in Python
     sample_network = nx.DiGraph()
-    for x in sample_network_raw[1:]:  # Skip the first node into which it all flows
-        sample_network.add_node(x.data.name, data=x)
-        if x.downstream_node != NO_DOWNSTREAM:
-            sample_network.add_edge(x.data.name, ids_to_names[x.downstream_node])
-
-    # Calculate the total contributing area for each sample
-    for x, my_data in nx_topological_sort_with_data(sample_network):
-        my_data.total_area += my_data.area
-        if ds := nx_get_downstream(sample_network, x):
-            downstream_data = sample_network.nodes[ds]["data"]
-            downstream_data.total_area += my_data.total_area
+    for x in sample_network_raw.values():  # Skip the first node into which it all flows
+        if x.name == pyfastunmix.root_node_name:
+            continue
+        sample_network.add_node(x.name, data=x)
+        if x.downstream_node != pyfastunmix.root_node_name:
+            sample_network.add_edge(x.name, x.downstream_node)
 
     return sample_network, sample_adjacency
 
 
 class SampleNetwork:
-    def __init__(self, sample_network: nx.DiGraph, sample_adjacency: nx.DiGraph) -> None:
+    def __init__(
+        self, sample_network: nx.DiGraph, sample_adjacency: "pyfastunmix.SampleAdjacency"
+    ) -> None:
         self.sample_network = sample_network
         self.sample_adjacency = sample_adjacency
         self._site_to_parameter: Dict[str, cp.Parameter] = {}
@@ -105,8 +100,8 @@ class SampleNetwork:
             my_data.total_flux += my_data.my_flux
 
             observed = cp.Parameter(pos=True)
-            self._site_to_parameter[my_data.data.name] = observed
-            normalised_concentration = my_data.total_flux / my_data.total_area
+            self._site_to_parameter[my_data.name] = observed
+            normalised_concentration = my_data.total_flux / my_data.total_upstream_area
             self._primary_terms.append(cp_log_ratio_norm(normalised_concentration, observed))
 
             if ds := nx_get_downstream(self.sample_network, sample_name):
@@ -116,14 +111,9 @@ class SampleNetwork:
 
     def _build_regularizer_terms(self) -> None:
         # Build the regularizer
-        sample_names = list(self.sample_network.nodes)
         for adjacent_nodes, border_length in self.sample_adjacency.items():
-            # Adjacency network stores samples as numbers from [1,Inf) since 0
-            # is reserved as the node everything drains into
-            node_a = sample_names[adjacent_nodes[0] - 1]  # Get samplename from node 'number'
-            node_b = sample_names[adjacent_nodes[1] - 1]
-            a_concen = self.sample_network.nodes[node_a]["data"].my_value
-            b_concen = self.sample_network.nodes[node_b]["data"].my_value
+            a_concen = self.sample_network.nodes[adjacent_nodes[0]]["data"].my_value
+            b_concen = self.sample_network.nodes[adjacent_nodes[1]]["data"].my_value
             # TODO: Make difference a log-ratio
             # self._regularizer_terms.append(border_length * (cp_log_ratio_norm(a_concen,b_concen)))
             # Simple difference (not desirable)
@@ -151,8 +141,8 @@ class SampleNetwork:
         observation_data: ElementData,
         regularization_strength: Optional[float] = None,
         solver: str = "gurobi",
-    ):
-        obs_mean = np.mean(list(observation_data.values()))
+    ) -> Tuple[ElementData, ElementData]:
+        obs_mean: float = np.mean(list(observation_data.values()))
 
         # Reset all sites' observations
         for x in self._site_to_parameter.values():
@@ -168,18 +158,18 @@ class SampleNetwork:
 
         if self._regularizer_terms and not regularization_strength:
             raise Exception("WARNING: Regularizer terms present but no strength assigned.")
-        else:
-            self._regularizer_strength.value = regularization_strength
+        self._regularizer_strength.value = regularization_strength
 
         # Solvers that can handle this problem type include:
         # ECOS, SCS
         # See: https://www.cvxpy.org/tutorial/advanced/index.html#choosing-a-solver
         # See: https://www.cvxpy.org/tutorial/advanced/index.html#setting-solver-options
         solvers = {
+            # VERY SLOW, probably don't use
             "scip": {
                 "solver": cp.SCIP,
                 "verbose": True,
-            },  # VERY SLOW, probably don't use
+            },
             "ecos": {
                 "solver": cp.ECOS,
                 "verbose": True,
@@ -200,36 +190,30 @@ class SampleNetwork:
         )
         print(f"Objective value = {objective_value}")
         # Return outputs
-        downstream_preds = get_downstream_prediction_dictionary(sample_network=self.sample_network)
-        downstream_preds.update(
-            (sample, value * obs_mean) for sample, value in downstream_preds.items()
-        )
+        downstream_preds = self.get_downstream_prediction_dictionary()
+        upstream_preds = self.get_upstream_prediction_dictionary()
 
-        upstream_preds = get_upstream_prediction_dictionary(sample_network=self.sample_network)
-        upstream_preds.update(
-            (sample, value * obs_mean) for sample, value in downstream_preds.items()
-        )
+        downstream_preds = {sample: value * obs_mean for sample, value in downstream_preds.items()}
+        upstream_preds = {sample: value * obs_mean for sample, value in upstream_preds.items()}
 
         return downstream_preds, upstream_preds
 
+    def get_downstream_prediction_dictionary(self) -> ElementData:
+        # Print the solution we found
+        predictions: ElementData = {}
+        for sample_name, data in self.sample_network.nodes(data=True):
+            data = data["data"]
+            predictions[sample_name] = data.total_flux.value / data.total_upstream_area
 
-def get_downstream_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
-    # Print the solution we found
-    predictions: ElementData = {}
-    for sample_name, data in sample_network.nodes(data=True):
-        data = data["data"]
-        predictions[sample_name] = data.total_flux.value / data.total_area
+        return predictions
 
-    return predictions
-
-
-def get_upstream_prediction_dictionary(sample_network: nx.DiGraph) -> pd.DataFrame:
-    # Get the predicted upstream concentration we found
-    predictions: ElementData = {}
-    for sample_name, data in sample_network.nodes(data=True):
-        data = data["data"]
-        predictions[sample_name] = data.my_value.value
-    return predictions
+    def get_upstream_prediction_dictionary(self) -> ElementData:
+        # Get the predicted upstream concentration we found
+        predictions: ElementData = {}
+        for sample_name, data in self.sample_network.nodes(data=True):
+            data = data["data"]
+            predictions[sample_name] = data.my_value.value
+        return predictions
 
 
 def get_element_obs(element: str, obs_data: pd.DataFrame) -> ElementData:
@@ -242,17 +226,12 @@ def get_element_obs(element: str, obs_data: pd.DataFrame) -> ElementData:
     return element_data
 
 
-def get_unique_upstream_areas(sample_network: nx.DiGraph):
+def get_unique_upstream_areas(sample_network: nx.DiGraph) -> Dict[str, np.ndarray]:
     """Generates a dictionary which maps sample numbers onto
     the unique upstream area (as a boolean mask)
     for the sample site."""
     I = plt.imread("labels.tif")[:, :, 0]
-    areas = {}
-    counter = 1
-    for node in sample_network.nodes:
-        areas[node] = I == counter
-        counter += 1
-    return areas
+    return {node: I == data["data"].label for node, data in sample_network.nodes(data=True)}
 
 
 def get_upstream_concentration_map(areas, upstream_preds):
@@ -300,6 +279,8 @@ def process_data(
     obs_data = obs_data.drop(columns=excluded_elements)
 
     problem = SampleNetwork(sample_network=sample_network, sample_adjacency=sample_adjacency)
+
+    get_unique_upstream_areas(problem.sample_network)
 
     results = None
     # TODO(r-barnes,alexlipp): Loop over all elements once we achieve acceptable results
