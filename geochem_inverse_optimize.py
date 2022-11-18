@@ -172,7 +172,7 @@ class SampleNetwork:
             },
             "ecos": {
                 "solver": cp.ECOS,
-                "verbose": True,
+                "verbose": False,
                 "max_iters": 10000,
                 "abstol_inacc": 5e-5,
                 "reltol_inacc": 5e-5,
@@ -204,7 +204,6 @@ class SampleNetwork:
         for sample_name, data in self.sample_network.nodes(data=True):
             data = data["data"]
             predictions[sample_name] = data.total_flux.value / data.total_upstream_area
-
         return predictions
 
     def get_upstream_prediction_dictionary(self) -> ElementData:
@@ -214,6 +213,12 @@ class SampleNetwork:
             data = data["data"]
             predictions[sample_name] = data.my_value.value
         return predictions
+
+    def get_misfit(self) -> float:
+        return cp.norm(cp.vstack(self._primary_terms)).value
+
+    def get_roughness(self) -> float:
+        return cp.norm(cp.vstack(self._regularizer_terms)).value
 
 
 def get_element_obs(element: str, obs_data: pd.DataFrame) -> ElementData:
@@ -232,6 +237,29 @@ def get_unique_upstream_areas(sample_network: nx.DiGraph) -> Dict[str, np.ndarra
     for the sample site."""
     I = plt.imread("labels.tif")[:, :, 0]
     return {node: I == data["data"].label for node, data in sample_network.nodes(data=True)}
+
+
+def plot_sweep_of_regularizer_strength(
+    sample_network: nx.DiGraph,
+    element_data: ElementData,
+    min_: float,
+    max_: float,
+    trial_num: float,
+):
+    vals = np.logspace(min_, max_, num=trial_num)  # regularizer strengths to try
+    for val in vals:
+        print(20 * "_")
+        print("Trying regularizer strength: 10^", round(np.log10(val), 3))
+        _, _ = sample_network.solve(element_data, solver="ecos", regularization_strength=val)
+        roughness = sample_network.get_roughness()
+        misfit = sample_network.get_misfit()
+        print("Roughness:", np.round(roughness, 4))
+        print("Data misfit:", np.round(misfit, 4))
+        plt.scatter(roughness, misfit, c="grey")
+        plt.text(roughness, misfit, str(round(np.log10(val), 3)))
+    plt.xlabel("Roughness")
+    plt.ylabel("Data misfit")
+    plt.show()
 
 
 def get_upstream_concentration_map(areas, upstream_preds):

@@ -27,6 +27,11 @@ problem = gio.SampleNetwork(sample_network=sample_network, sample_adjacency=samp
 element_data = gio.get_element_obs(
     element, obs_data
 )  # Return dictionary of {sample_name:concentration}
+
+
+gio.plot_sweep_of_regularizer_strength(problem, element_data, -5, -1, 11)
+
+
 element_pred_down, element_pred_upstream = problem.solve(
     element_data, solver="ecos", regularization_strength=10 ** (-3)
 )  # Solve problem
