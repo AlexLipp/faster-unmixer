@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from collections import defaultdict
 from typing import Dict, Final, Iterator, List, Optional, Tuple
 
 # TODO(rbarnes): Make a requirements file for conda
@@ -242,7 +243,7 @@ class SampleNetwork:
     ):
         predictions_down_mc = defaultdict(list)
         predictions_up_mc = defaultdict(list)
-        for i in range(num_repeats):
+        for _ in range(num_repeats):
             observation_data_resampled = {
                 sample: value * np.random.normal(loc=1, scale=relative_error / 100)
                 for sample, value in observation_data.items()
