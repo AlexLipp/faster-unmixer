@@ -295,6 +295,43 @@ def get_element_obs(element: str, obs_data: pd.DataFrame) -> ElementData:
     return element_data
 
 
+def mix_downstream(
+    sample_network: nx.DiGraph, areas: Dict[str, np.ndarray], concentration_map: np.ndarray
+) -> Tuple[ElementData, ElementData]:
+    """Mixes a given concentration map along drainage, predicting the downstream concentration at sample sites
+    Args:
+        sample_network: A sample_network of localities (see `get_sample_graphs`)
+        areas: A dictionary mapping sample names to sub-basins (see `get_unique_upstream_areas`)
+        concentration_map: A 2D map of concentrations which is to be mixed along drainage. Must have same dimensions
+        as base flow-direction map/DEM
+    Returns:
+        mixed_downstream_pred: Dictionary containing predicted downstream mxied concentration at each sample sites
+        mixed_upstream_pred: Dictionary containing the average concentration of `concentration_map` in each sub-basin"""
+    mixed_downstream_pred = {}
+    mixed_upstream_pred = {}
+
+    for _, data in sample_network.nodes(data=True):
+        data["data"].total_flux = 0.0
+
+    for sample_name, my_data in nx_topological_sort_with_data(sample_network):
+        area = areas[sample_name]
+
+        my_data.my_value = np.mean(concentration_map[area])
+        # area weighted contribution from this node
+        my_data.my_flux = my_data.area * my_data.my_value
+        # Add the flux I generate to the total flux passing through me
+        my_data.total_flux += my_data.my_flux
+        normalised = my_data.total_flux / my_data.total_upstream_area
+        mixed_downstream_pred[sample_name] = normalised
+        mixed_upstream_pred[sample_name] = my_data.my_value
+        if ds := nx_get_downstream(sample_network, sample_name):
+            downstream_data = sample_network.nodes[ds]["data"]
+            # Add our flux to the downstream node's
+            downstream_data.total_flux += my_data.total_flux
+
+    return mixed_downstream_pred, mixed_upstream_pred
+
+
 def get_unique_upstream_areas(sample_network: nx.DiGraph) -> Dict[str, np.ndarray]:
     """Generates a dictionary which maps sample numbers onto
     the unique upstream area (as a boolean mask)
