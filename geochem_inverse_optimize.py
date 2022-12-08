@@ -480,18 +480,16 @@ def mix_downstream(
         concentration_map: A 2D map of concentrations which is to be mixed along drainage. Must have same dimensions
         as base flow-direction map/DEM
     Returns:
-        mixed_downstream_pred: Dictionary containing predicted downstream mxied concentration at each sample sites
+        mixed_downstream_pred: Dictionary containing predicted downstream mixed concentration at each sample sites
         mixed_upstream_pred: Dictionary containing the average concentration of `concentration_map` in each sub-basin"""
-    mixed_downstream_pred = {}
-    mixed_upstream_pred = {}
+    mixed_downstream_pred: ElementData = {}
+    mixed_upstream_pred: ElementData = {}
 
     for _, data in sample_network.nodes(data=True):
         data["data"].total_flux = 0.0
 
     for sample_name, my_data in nx_topological_sort_with_data(sample_network):
-        area = areas[sample_name]
-
-        my_data.my_value = np.mean(concentration_map[area])
+        my_data.my_value = np.mean(concentration_map[areas[sample_name]])
         # area weighted contribution from this node
         my_data.my_flux = my_data.area * my_data.my_value
         # Add the flux I generate to the total flux passing through me
