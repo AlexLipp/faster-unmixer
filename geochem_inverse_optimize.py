@@ -88,7 +88,8 @@ def plot_network(G: nx.DiGraph) -> None:
 
 
 def get_sample_graphs(
-    data_dir: str,
+    flowdirs_filename: str,
+    sample_data_filename: str,
 ) -> Tuple[nx.DiGraph, "pyfastunmix.SampleAdjacency"]:
     # Get the graph representations of the data
     sample_network_raw, sample_adjacency = pyfastunmix.fastunmix(
