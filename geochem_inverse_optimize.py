@@ -3,7 +3,8 @@
 import os
 import tempfile
 from collections import defaultdict
-from typing import Dict, Final, Iterator, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, Final, Iterator, List, Optional, Tuple, Union
 
 # TODO(rbarnes): Make a requirements file for conda
 import cvxpy as cp
@@ -87,7 +88,7 @@ def plot_network(G: nx.DiGraph) -> None:
 
 
 def get_sample_graphs(
-    flowdirs_filename: str, sample_data_filename: str
+    data_dir: str,
 ) -> Tuple[nx.DiGraph, "pyfastunmix.SampleAdjacency"]:
     # Get the graph representations of the data
     sample_network_raw, sample_adjacency = pyfastunmix.fastunmix(
@@ -107,14 +108,22 @@ def get_sample_graphs(
 
 
 class SampleNetwork:
+    # TODO Docstrings
     def __init__(
         self,
         sample_network: nx.DiGraph,
-        sample_adjacency: "pyfastunmix.SampleAdjacency",
+        sample_adjacency: Optional["pyfastunmix.SampleAdjacency"] = None,
         use_regularization: bool = True,
+        continuous: bool = False,
+        area_labels: Optional[np.array] = None,
+        nx: Optional[int] = None,
+        ny: Optional[int] = None,
     ) -> None:
         self.sample_network = sample_network
         self.sample_adjacency = sample_adjacency
+        self.continuous: bool = continuous
+        if self.continuous:
+            self.grid = InverseGrid(nx, ny, area_labels, sample_network)
         self._site_to_parameter: Dict[str, ReciprocalParameter] = {}
         self._primary_terms = []
         self._regularizer_terms = []
@@ -122,7 +131,10 @@ class SampleNetwork:
         self._problem = None
         self._build_primary_terms()
         if use_regularization:
-            self._build_regularizer_terms()
+            if continuous:
+                self._build_regularizer_terms_continuous()
+            else:
+                self._build_regularizer_terms_discrete()
         self._build_problem()
 
     def _build_primary_terms(self) -> None:
@@ -133,7 +145,14 @@ class SampleNetwork:
         # Use a topological sort to ensure an upstream-to-downstream traversal
         for sample_name, my_data in nx_topological_sort_with_data(self.sample_network):
             # Set up a CVXPY parameter for each element for each node
-            my_data.my_value = cp.Variable(pos=True)
+            if self.continuous:
+                concs = [node.concentration for node in self.grid.sites_to_nodes[sample_name]]
+
+                my_data.my_value = cp.sum(concs) / len(
+                    concs
+                )  # mean conc of all inversion nodes upstream
+            else:
+                my_data.my_value = cp.Variable(pos=True)
 
             # area weighted contribution from this node
             my_data.my_flux = my_data.area * my_data.my_value
@@ -151,8 +170,34 @@ class SampleNetwork:
                 # Add our flux to the downstream node's
                 downstream_data.total_flux += my_data.total_flux
 
-    def _build_regularizer_terms(self) -> None:
+    def _build_regularizer_terms_continuous(self) -> None:
         # Build the regularizer
+        # Loop through all nodes in grid
+        for node in self.grid.node_arr.flatten():
+            # If node outside of sample area it is ignored
+            if node.sample_name == "NaN":
+                continue
+            # If node has a neighbour to left, and this is not outside of area then we append the
+            # difference to the regulariser terms.
+            if node.left_neighbour and node.left_neighbour.sample_name != "NaN":
+                # TODO: Make difference a log-ratio
+                self._regularizer_terms.append(
+                    node.concentration - node.left_neighbour.concentration
+                )
+            # If node has a neighbour above, and this is not outside of area then we append the
+            # difference to the regulariser terms.
+            if node.top_neighbour and node.top_neighbour.sample_name != "NaN":
+                # TODO: Make difference a log-ratio
+                self._regularizer_terms.append(
+                    node.concentration - node.top_neighbour.concentration
+                )
+
+    def _build_regularizer_terms_discrete(self) -> None:
+        # Build regularizer
+        if not self.sample_adjacency:
+            raise Exception("Sample adjacency (sample_adjacency) not provided")
+
+        # Loop through all samples in drainage network
         for adjacent_nodes, border_length in self.sample_adjacency.items():
             a_concen = self.sample_network.nodes[adjacent_nodes[0]]["data"].my_value
             b_concen = self.sample_network.nodes[adjacent_nodes[1]]["data"].my_value
@@ -167,7 +212,6 @@ class SampleNetwork:
         # Build the objective and constraints
         objective = cp.norm(cp.vstack(self._primary_terms))
         if self._regularizer_terms:
-            # TODO(alexlipp,r-barnes): Make sure that his uses the same summation strategy as the primary terms
             objective += self._regularizer_strength * cp.norm(cp.vstack(self._regularizer_terms))
         constraints = []
 
@@ -180,7 +224,7 @@ class SampleNetwork:
         observation_data: ElementData,
         regularization_strength: Optional[float] = None,
         solver: str = "gurobi",
-    ) -> Tuple[ElementData, ElementData]:
+    ) -> Union[Tuple[ElementData, ElementData], Tuple[ElementData, np.ndarray]]:
         obs_mean: float = np.mean(list(observation_data.values()))
 
         # Reset all sites' observations
@@ -230,10 +274,15 @@ class SampleNetwork:
         print(f"Objective value = {objective_value}")
         # Return outputs
         downstream_preds = self.get_downstream_prediction_dictionary()
-        upstream_preds = self.get_upstream_prediction_dictionary()
-
         downstream_preds = {sample: value * obs_mean for sample, value in downstream_preds.items()}
-        upstream_preds = {sample: value * obs_mean for sample, value in upstream_preds.items()}
+        # If solving continuously return a map on resolution base DEM
+
+        if self.continuous:
+            upstream_preds = self.get_upstream_prediction_map() * obs_mean
+        # If solving discrete return a dictionary of values corresponding to each sample site
+        else:
+            upstream_preds = self.get_upstream_prediction_dictionary()
+            upstream_preds = {sample: value * obs_mean for sample, value in upstream_preds.items()}
 
         return downstream_preds, upstream_preds
 
@@ -242,11 +291,16 @@ class SampleNetwork:
         observation_data: ElementData,
         relative_error: float,
         num_repeats: int,
-        regularization_strength: float,
+        regularization_strength: Optional[float] = None,
         solver: str = "gurobi",
     ):
         predictions_down_mc = defaultdict(list)
-        predictions_up_mc = defaultdict(list)
+
+        if self.continuous:
+            predictions_up_mc = []
+        else:
+            predictions_up_mc = defaultdict(list)
+
         for _ in range(num_repeats):
             observation_data_resampled = {
                 sample: value * np.random.normal(loc=1, scale=relative_error / 100)
@@ -259,7 +313,13 @@ class SampleNetwork:
             )  # Solve problem
             for sample_name in element_pred_down.keys():
                 predictions_down_mc[sample_name] += [element_pred_down[sample_name]]
-                predictions_up_mc[sample_name] += [element_pred_upstream[sample_name]]
+
+            if self.continuous:
+                predictions_up_mc += [element_pred_upstream]
+            else:
+                for sample_name in element_pred_down.keys():
+                    predictions_up_mc[sample_name] += [element_pred_upstream[sample_name]]
+
         return predictions_down_mc, predictions_up_mc
 
     def get_downstream_prediction_dictionary(self) -> ElementData:
@@ -271,6 +331,10 @@ class SampleNetwork:
         return predictions
 
     def get_upstream_prediction_dictionary(self) -> ElementData:
+        if self.continuous:
+            raise Exception(
+                "Warning: `get_upstream_prediction_dictionary` only valid for discrete networks"
+            )
         # Get the predicted upstream concentration we found
         predictions: ElementData = {}
         for sample_name, data in self.sample_network.nodes(data=True):
@@ -278,11 +342,121 @@ class SampleNetwork:
             predictions[sample_name] = data.my_value.value
         return predictions
 
+    def get_upstream_prediction_map(self) -> np.ndarray:
+        if not self.continuous:
+            raise Exception(
+                "Warning: `get_upstream_prediction_map` only valid for continuous networks"
+            )
+        out = np.zeros(self.grid.area_labels.shape)
+        xstep = out.shape[1] / self.grid.nx
+        ystep = out.shape[0] / self.grid.ny
+        # Loop through inversion grid nodes
+        for i in range(self.grid.nx):
+            for j in range(self.grid.ny):
+                # indices which subdivide the areas on the base array for each inversion grid.
+                x_start = int(i * xstep)
+                x_end = int((i + 1) * xstep)
+                y_start = int((j * ystep))
+                y_end = int((j + 1) * ystep)
+                node = self.grid.node_arr[j, i]
+                # Catch exception for nodes outside of area
+                if node.concentration:
+                    val = node.concentration.value
+                else:
+                    val = np.nan
+                out[y_start:y_end, x_start:x_end] = val
+        return out
+
     def get_misfit(self) -> float:
         return cp.norm(cp.vstack(self._primary_terms)).value
 
     def get_roughness(self) -> float:
         return cp.norm(cp.vstack(self._regularizer_terms)).value
+
+
+@dataclass
+class InverseNode:
+    """A single node on an inversion grid.
+
+    Each `InverseNode` corresponds to a rectangle of pixels on the base raster
+    and is associated with a single sample site. The sample site which each
+    `InverseNode` is associated to is based on sub-catchment which the *centre*
+    of the rectangle lies in. For rectangles which overlap two catchments, there
+    may be some inaccuracies as each `InverseNode` can only be associated with
+    one sample site. As the resolution increases this inaccuracy decreases.
+
+    Attributes:
+        left_neighbour : Pointer to left-neighbouring InverseNode
+        top_neighbour : Pointer to vertically-above InverseNode
+        sample_name : Samplename associated with this node
+        concentration: Value to be optimised for
+    """
+
+    left_neighbour: "InverseNode"
+    top_neighbour: "InverseNode"
+    sample_name: str
+    concentration: cp.Variable = field(default_factory=lambda: cp.Variable(pos=True))
+
+
+class InverseGrid:
+    """A regularly spaced rectangular grid of inverse nodes
+
+    Args:
+        nx : Number of columns in the grid
+        ny : Number of rows in the grid
+        area_labels : 2D array which matches upstream areas to labels
+        sample_network : Network of sample_sites along drainage, with associated data
+
+    Attributes:
+        nx : Number of columns in the grid
+        ny : Number of rows in the grid
+        area_labels : 2D array which matches pixels to sample labels
+        node_arr : List of lists (dims: (ny,xs)) containing all InverseNodes
+        sites_to_nodes : Dict mapping sample numbers to list of nodes in its upstream area
+    """
+
+    def __init__(self, nx: int, ny: int, area_labels: np.array, sample_network: nx.DiGraph) -> None:
+        self.area_labels = area_labels
+        if nx <= 0 or ny <= 0:
+            raise Exception("Warning: nx or ny must be strictly positive")
+        xmax = area_labels.shape[1]
+        ymax = area_labels.shape[0]
+        if ny > ymax or nx > xmax:
+            raise Exception(
+                "Warning: desired resolution greater than that of DEM. \n Decrease resolution to resolve"
+            )
+        self.nx = nx
+        self.ny = ny
+        xstep = xmax / nx
+        ystep = ymax / ny
+        # The x and y coordinates on the DEM of the *centres* of the rectangular nodes
+        xs = np.linspace(start=xstep / 2, stop=xmax - xstep / 2, num=nx)
+        ys = np.linspace(start=ystep / 2, stop=ymax - ystep / 2, num=ny)
+        self.sites_to_nodes = defaultdict(list)
+        # Map area labels to sample numbers
+        area_label_to_sample_name = {
+            data["data"].label: node for node, data in sample_network.nodes(data=True)
+        }
+        self.node_arr = np.empty((ny, nx), dtype=object)
+        # Loop through a (nx, ny) grid
+        for i, x_coord in enumerate(xs):
+            for j, y_coord in enumerate(ys):
+                # Point towards neighbours, catching uppper & left boundary node exceptions
+                left = self.node_arr[j, i - 1] if i > 0 else None
+                top = self.node_arr[j - 1, i] if j > 0 else None
+                label = self.area_labels[int(y_coord), int(x_coord)]
+                sample_name = area_label_to_sample_name[label] if label != 0 else "NaN"
+                # Create an inversion node
+                node = InverseNode(left_neighbour=left, top_neighbour=top, sample_name=sample_name)
+                self.node_arr[j, i] = node
+                self.sites_to_nodes[node.sample_name].append(node)
+        # For low density grids, sample areas can contain no nodes resulting in errors.
+        # Catch this exception here
+        num_keys = len(self.sites_to_nodes)
+        if num_keys < len(np.unique(self.area_labels)) - 1:
+            raise Exception(
+                "Warning: Not all catchments contain a node. \n \t Increase resolution to resolve"
+            )
 
 
 def get_element_obs(element: str, obs_data: pd.DataFrame) -> ElementData:
