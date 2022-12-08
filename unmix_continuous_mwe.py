@@ -5,14 +5,20 @@ import pandas as pd
 
 import geochem_inverse_optimize as gio
 
-sample_network, sample_adjacency = gio.get_sample_graphs("data/")
+# Constants
+element = "Mg"  # Set element
+regularizer_strength = 10 ** (-1)
 
-obs_data = pd.read_csv("data/geochem_no_dupes.dat", delimiter=" ")
+# Load sample network
+sample_network, sample_adjacency = gio.get_sample_graphs(
+    flowdirs_filename="data/d8.asc",
+    sample_data_filename="data/sample_data.dat",
+)
+
+# Load in observations
+obs_data = pd.read_csv("data/sample_data.dat", delimiter=" ")
 obs_data = obs_data.drop(columns=["Bi", "S"])
 
-element = "Mg"  # Set element
-sample_network, sample_adjacency = gio.get_sample_graphs("data/")
-regularizer_strength = 10 ** (-1)
 area_map = plt.imread("labels.tif")[:, :, 0]
 
 print("Building problem...")
@@ -26,11 +32,12 @@ element_data = gio.get_element_obs(
 gio.plot_sweep_of_regularizer_strength(problem, element_data, -5, -1, 11)
 
 print("Solving problem...")
-down_dict, upst_map = problem.solve(
+down_dict, upstream_map = problem.solve(
     element_data, regularization_strength=regularizer_strength, solver="ecos"
 )
+
 print("Visualising output...")
-plt.imshow(upst_map)
+plt.imshow(upstream_map)
 plt.colorbar()
 plt.show()
 
@@ -47,8 +54,8 @@ element_pred_down_mc, element_pred_up_mc = problem.solve_montecarlo(
     regularization_strength=regularizer_strength,
     solver="ecos",
 )
-stacked_upst = np.dstack(element_pred_up_mc)
-stds = np.std(stacked_upst, axis=2)
+stacked_upstream = np.dstack(element_pred_up_mc)
+stds = np.std(stacked_upstream, axis=2)
 plt.imshow(stds)
 plt.title("Upstream Uncertainties")
 plt.colorbar()

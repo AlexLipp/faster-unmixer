@@ -1,7 +1,4 @@
 # Preamble
-import os
-import sys
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -9,20 +6,24 @@ from matplotlib.colors import LogNorm
 
 import geochem_inverse_optimize as gio
 
-print(sys.version)
-print(os.getcwd())
+# Constants
+element = "Mg"  # Set element
+regularizer_strength = 10 ** (-2.5)
+
+# Load sample network
+sample_network, sample_adjacency = gio.get_sample_graphs(
+    flowdirs_filename="data/d8.asc",
+    sample_data_filename="data/sample_data.dat",
+)
 
 # Load in observations
 obs_data = pd.read_csv("data/sample_data.dat", delimiter=" ")
 obs_data = obs_data.drop(columns=["Bi", "S"])
 
-element = "Mg"  # Set element
-sample_network, sample_adjacency = gio.get_sample_graphs("data/d8.asc", "data/sample_data.dat")
-regularizer_strength = 10 ** (-2.5)
-
 # plt.figure(figsize=(15, 10))  # Visualise network
 # gio.plot_network(sample_network)
 # plt.show()
+print("Building problem...")
 problem = gio.SampleNetwork(sample_network=sample_network, sample_adjacency=sample_adjacency)
 
 
@@ -30,13 +31,12 @@ element_data = gio.get_element_obs(
     element, obs_data
 )  # Return dictionary of {sample_name:concentration}
 
-
 gio.plot_sweep_of_regularizer_strength(problem, element_data, -5, -1, 11)
 
-
+print("Solving problem...")
 element_pred_down, element_pred_upstream = problem.solve(
     element_data, solver="ecos", regularization_strength=10 ** (-3)
-)  # Solve problem
+)
 
 relative_error = 10  #%
 print("Calculating uncertainties with monte-carlo sampling")
@@ -48,11 +48,11 @@ element_pred_down_mc, element_pred_up_mc = problem.solve_montecarlo(
     solver="ecos",
 )
 
-downstream_uncerts = {}
+downstream_uncertainties = {}
 for sample, values in element_pred_down_mc.items():
-    downstream_uncerts[sample] = np.std(values)
+    downstream_uncertainties[sample] = np.std(values)
 
-# print(downstream_uncerts)
+# print(downstream_uncertainties)
 
 area_dict = gio.get_unique_upstream_areas(sample_network)  # Extract areas for each basin
 upstream_map = gio.get_upstream_concentration_map(
