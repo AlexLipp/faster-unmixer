@@ -60,7 +60,7 @@ def cp_log_ratio(a, b: ReciprocalParameter):
     return cp.maximum(a * b.rp, b.p * cp.inv_pos(a))
 
 
-def geo_mean(x: list) -> float:
+def geo_mean(x: List[float]) -> float:
     """Returns geometric mean of a list"""
     return np.exp(np.log(x).mean())
 
@@ -199,7 +199,7 @@ class SampleNetwork:
                 )
 
     def _build_regularizer_terms_discrete(self) -> None:
-        # Build regularizer                
+        # Build regularizer
         for _, data in self.sample_network.nodes(data=True):
             concen = data["data"].my_value
             # Data is divided by the mean as part of .solve method, thus the mean value is simply 1.
