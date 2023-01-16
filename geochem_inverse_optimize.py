@@ -60,6 +60,11 @@ def cp_log_ratio(a, b: ReciprocalParameter):
     return cp.maximum(a * b.rp, b.p * cp.inv_pos(a))
 
 
+def geo_mean(x: list) -> float:
+    """Returns geometric mean of a list"""
+    return np.exp(np.log(x).mean())
+
+
 def nx_topological_sort_with_data(G: nx.DiGraph) -> Iterator[Tuple[str, pyfastunmix.SampleNode]]:
     return ((x, G.nodes[x]["data"]) for x in nx.topological_sort(G))
 
@@ -194,18 +199,13 @@ class SampleNetwork:
                 )
 
     def _build_regularizer_terms_discrete(self) -> None:
-        # Build regularizer
-        if not self.sample_adjacency:
-            raise Exception("Sample adjacency (sample_adjacency) not provided")
-
-        # Loop through all samples in drainage network
-        for adjacent_nodes, border_length in self.sample_adjacency.items():
-            a_concen = self.sample_network.nodes[adjacent_nodes[0]]["data"].my_value
-            b_concen = self.sample_network.nodes[adjacent_nodes[1]]["data"].my_value
-            # TODO: Make difference a log-ratio
-            # self._regularizer_terms.append(border_length * (cp_log_ratio(a_concen,b_concen)))
-            # Simple difference (not desirable)
-            self._regularizer_terms.append(border_length * (a_concen - b_concen))
+        # Build regularizer                
+        for _, data in self.sample_network.nodes(data=True):
+            concen = data["data"].my_value
+            # Data is divided by the mean as part of .solve method, thus the mean value is simply 1.
+            # To calculate (convex) relative differences of observation x from the mean we thus
+            # calculate max(x/1,1/x) = max(x,1/x)
+            self._regularizer_terms.append(cp.maximum(concen, cp.inv_pos(concen)))
 
     def _build_problem(self) -> None:
         assert self._primary_terms
@@ -226,7 +226,7 @@ class SampleNetwork:
         regularization_strength: Optional[float] = None,
         solver: str = "gurobi",
     ) -> Union[Tuple[ElementData, ElementData], Tuple[ElementData, np.ndarray]]:
-        obs_mean: float = np.mean(list(observation_data.values()))
+        obs_mean: float = geo_mean(list(observation_data.values()))
 
         # Reset all sites' observations
         for x in self._site_to_parameter.values():
