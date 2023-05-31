@@ -395,13 +395,13 @@ class SampleNetwork:
                 solver=solver,
                 regularization_strength=regularization_strength,
             )  # Solve problem
-            for sample_name in element_pred_down.keys():
+            for sample_name in element_pred_down:
                 predictions_down_mc[sample_name] += [element_pred_down[sample_name]]
 
             if self.continuous:
                 predictions_up_mc += [element_pred_upstream]
             else:
-                for sample_name in element_pred_down.keys():
+                for sample_name in element_pred_down:
                     predictions_up_mc[sample_name] += [element_pred_upstream[sample_name]]
 
         return predictions_down_mc, predictions_up_mc
@@ -656,7 +656,7 @@ def get_upstream_concentration_map(areas, upstream_preds):
 def visualise_downstream(pred_dict, obs_dict, element: str) -> None:
     obs = []
     pred = []
-    for sample in obs_dict.keys():
+    for sample in obs_dict:
         obs += [obs_dict[sample]]
         pred += [pred_dict[sample]]
     obs = np.asarray(obs)
@@ -707,8 +707,8 @@ def process_data(
 
         if results is None:
             results = pd.DataFrame(element_data.keys())
-        results[element + "_obs"] = [element_data[sample] for sample in element_data.keys()]
-        results[element + "_dwnst_prd"] = [predictions[sample] for sample in element_data.keys()]
+        results[element + "_obs"] = [element_data[sample] for sample in element_data]
+        results[element + "_dwnst_prd"] = [predictions[sample] for sample in element_data]
 
     return results
 
