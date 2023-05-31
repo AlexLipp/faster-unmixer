@@ -621,7 +621,7 @@ def plot_sweep_of_regularizer_strength(
     min_: float,
     max_: float,
     trial_num: float,
-):
+) -> None:
     vals = np.logspace(min_, max_, num=trial_num)  # regularizer strengths to try
     for val in vals:
         print(20 * "_")
@@ -713,7 +713,7 @@ def process_data(
     return results
 
 
-def main():
+def main() -> None:
     results = process_data(
         flowdirs_filename="data/d8.asc",
         data_filename="data/sample_data.dat",
