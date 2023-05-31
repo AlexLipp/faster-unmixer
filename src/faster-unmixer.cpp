@@ -146,18 +146,17 @@ std::pair<std::vector<internal::SampleNode>, internal::NeighborsToBorderLength> 
   convert_arc_flowdirs_to_richdem_d8(arc_flowdirs, flowdirs);
   flowdirs.saveGDAL("rd_flowdirs.tif");
 
-  // Get geotransform info from raster 
-    // Extract GDAL origin (upper left) + pixel widths 
-    const auto originX = flowdirs.geotransform[0];
-    const auto originY = flowdirs.geotransform[3];
-    const auto pixelWidth = flowdirs.geotransform[1];
-    const auto pixelHeight = flowdirs.geotransform[5];
+  // Get geotransform info from raster
+  // Extract GDAL origin (upper left) + pixel widths
+  const auto originX = flowdirs.geotransform[0];
+  const auto originY = flowdirs.geotransform[3];
+  const auto pixelWidth = flowdirs.geotransform[1];
+  const auto pixelHeight = flowdirs.geotransform[5];
 
   // Get sample locations and put them in a set using flat-indexing for fast
   // look-up
   std::unordered_map<uint32_t, internal::SampleData> sample_locs;
   for(const auto &sample: get_sample_data(sample_filename)){
-
     // Get x, y indices relative to upper left
     const auto x_ul = static_cast<int64_t>(std::round((sample.x-originX)/pixelWidth));
     const auto y_ul = static_cast<int64_t>(std::round((sample.y-originY)/pixelHeight));
