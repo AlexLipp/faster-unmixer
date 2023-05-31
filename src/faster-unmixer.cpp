@@ -7,6 +7,7 @@
 #include <richdem/flowmet/d8_flowdirs.hpp>
 #include <richdem/methods/flow_accumulation.hpp>
 #include <richdem/misc/conversion.hpp>
+#include <iostream>
 
 #include <fstream>
 #include <queue>
@@ -30,8 +31,8 @@ struct PairHash {
 
 struct SampleData {
   std::string name = unset_node_name;
-  int64_t x = std::numeric_limits<int64_t>::min();
-  int64_t y = std::numeric_limits<int64_t>::min();
+  double x = std::numeric_limits<double>::quiet_NaN();
+  double y = std::numeric_limits<double>::quiet_NaN();
 };
 
 // Each SampleNode correspond to a sample, specified by a name and (x,y)
@@ -86,8 +87,8 @@ std::vector<internal::SampleData> get_sample_data(const std::string &sample_file
     while(std::getline(fin, temp)){
       std::stringstream ss(temp);
       std::string name;
-      int sx;
-      int sy;
+      double sx;
+      double sy;
       ss>>name>>sx>>sy;
       sample_data.push_back(internal::SampleData{name, sx, sy});
     }
@@ -145,12 +146,23 @@ std::pair<std::vector<internal::SampleNode>, internal::NeighborsToBorderLength> 
   convert_arc_flowdirs_to_richdem_d8(arc_flowdirs, flowdirs);
   flowdirs.saveGDAL("rd_flowdirs.tif");
 
+  // Get geotransform info from raster 
+    // Extract GDAL origin (upper left) + pixel widths 
+    const auto originX = flowdirs.geotransform[0];
+    const auto originY = flowdirs.geotransform[3];
+    const auto pixelWidth = flowdirs.geotransform[1];
+    const auto pixelHeight = flowdirs.geotransform[5];
+
   // Get sample locations and put them in a set using flat-indexing for fast
   // look-up
   std::unordered_map<uint32_t, internal::SampleData> sample_locs;
   for(const auto &sample: get_sample_data(sample_filename)){
-    // sample_locs[sample.x] = sample;
-    sample_locs[flowdirs.xyToI(sample.x, 862-sample.y)] = sample;
+
+    // Get x, y indices relative to upper left
+    const auto x_ul = static_cast<int64_t>(std::round((sample.x-originX)/pixelWidth));
+    const auto y_ul = static_cast<int64_t>(std::round((sample.y-originY)/pixelHeight));
+
+    sample_locs[flowdirs.xyToI(x_ul, y_ul)] = sample;
   }
 
   // Graph of how the samples are connected together.
