@@ -82,7 +82,7 @@ def nx_get_downstream(G: nx.DiGraph, x: str) -> Optional[str]:
         raise Exception("More than one downstream neighbour!")
 
 
-def normalise_areas(sample_network: nx.DiGraph) -> None:
+def calculate_normalised_areas(sample_network: nx.DiGraph) -> None:
     """
     Adds a new attribute `rltv_area` to node containing the upstream area of each node
     divided by the mean upstream area of the nodes in the network. This improves numerical
@@ -168,7 +168,7 @@ class SampleNetwork:
             data["data"].my_total_flux = 0.0
 
         # Normalises node area by total mean to improve numerical accuracy
-        normalise_areas(sample_network=self.sample_network)
+        calculate_normalised_areas(sample_network=self.sample_network)
 
         # Build the main objective
         # Use a topological sort to ensure an upstream-to-downstream traversal
