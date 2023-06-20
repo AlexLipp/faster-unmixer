@@ -22,7 +22,7 @@ element = "Mg"  # Set element
 regularizer_strength = 10 ** (-3.0)
 
 # Load sample network
-sample_network, sample_adjacency = gio.get_sample_graphs(
+sample_network, _ = gio.get_sample_graphs(
     flowdirs_filename="data/d8.asc",
     sample_data_filename="data/sample_data.dat",
 )
@@ -35,7 +35,7 @@ plt.figure(figsize=(15, 10))  # Visualise network
 gio.plot_network(sample_network)
 plt.show()
 print("Building problem...")
-problem = gio.SampleNetwork(sample_network=sample_network, sample_adjacency=sample_adjacency)
+problem = gio.SampleNetwork(sample_network=sample_network)
 
 
 element_data = gio.get_element_obs(

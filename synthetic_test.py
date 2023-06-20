@@ -7,7 +7,7 @@ max_val = 1000  # maximum value for synthetic input
 rel_err = 5  # 5% relative error
 
 # Load in Drainage Network
-sample_network, sample_adjacency = gio.get_sample_graphs(
+sample_network, _ = gio.get_sample_graphs(
     flowdirs_filename="data/synthetic_topo_d8.asc",
     sample_data_filename="data/synthetic_samples.dat",
 )  # Get upstream basins
@@ -36,7 +36,7 @@ mixed_synth_down, _ = gio.mix_downstream(
 #     for sample, value in mixed_synth_down.items()
 # }
 # Set up problem
-problem = gio.SampleNetwork(sample_network, sample_adjacency, use_regularization=False)
+problem = gio.SampleNetwork(sample_network, use_regularization=False)
 # Solve problem using synthetic downstream observations as input
 recovered_down, recovered_up = problem.solve(
     mixed_synth_down, solver="ecos", export_rates=input_export_rates

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import os
 import tempfile
 from collections import defaultdict
@@ -235,7 +234,6 @@ class SampleNetwork:
 
     Attributes:
         sample_network (nx.DiGraph): The sample network.
-        sample_adjacency (Optional["pyfastunmix.SampleAdjacency"]): The sample adjacency.
         use_regularization (bool): Flag indicating whether to use regularization to solve.
         continuous (bool): Flag indicating whether to solve `continuously' or discretely by each sub-basin.
         area_labels (Optional[np.array]): The mapping of pixels to area labels.
@@ -260,7 +258,6 @@ class SampleNetwork:
     def __init__(
         self,
         sample_network: nx.DiGraph,
-        sample_adjacency: Optional["pyfastunmix.SampleAdjacency"] = None,
         use_regularization: bool = True,
         continuous: bool = False,
         area_labels: Optional[np.ndarray] = None,
@@ -272,7 +269,6 @@ class SampleNetwork:
 
         Args:
             sample_network (nx.DiGraph): The sample network.
-            sample_adjacency (Optional["pyfastunmix.SampleAdjacency"]): The sample adjacency.
             use_regularization (bool): Flag indicating whether to use regularization.
             continuous (bool): Flag indicating whether the network is continuous.
             area_labels (Optional[np.array]): The area labels. (Only if continuous is True)
@@ -281,7 +277,6 @@ class SampleNetwork:
         """
 
         self.sample_network = sample_network
-        self.sample_adjacency = sample_adjacency
         self.continuous: bool = continuous
         if self.continuous:
             self.grid = InverseGrid(nx, ny, area_labels, sample_network)
@@ -1102,13 +1097,13 @@ def process_data(
     data_filename: str,
     excluded_elements: Optional[List[str]] = None,
 ) -> pd.DataFrame:
-    sample_network, sample_adjacency = get_sample_graphs(flowdirs_filename, data_filename)
+    sample_network, _ = get_sample_graphs(flowdirs_filename, data_filename)
 
     plot_network(sample_network)
     obs_data = pd.read_csv(data_filename, delimiter=" ")
     obs_data = obs_data.drop(columns=excluded_elements)
 
-    problem = SampleNetwork(sample_network=sample_network, sample_adjacency=sample_adjacency)
+    problem = SampleNetwork(sample_network=sample_network)
 
     get_unique_upstream_areas(problem.sample_network)
 

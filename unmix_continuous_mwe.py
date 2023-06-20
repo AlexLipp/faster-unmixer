@@ -23,7 +23,7 @@ element = "Mg"  # Set element
 regularizer_strength = 10 ** (-0.8)
 
 # Load sample network
-sample_network, sample_adjacency = gio.get_sample_graphs(
+sample_network, _ = gio.get_sample_graphs(
     flowdirs_filename="data/d8.asc",
     sample_data_filename="data/sample_data.dat",
 )
