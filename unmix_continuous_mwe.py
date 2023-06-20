@@ -16,14 +16,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-import geochem_inverse_optimize as gio
+import sample_network_unmix as snu
 
 # Constants
 element = "Mg"  # Set element
 regularizer_strength = 10 ** (-0.8)
 
 # Load sample network
-sample_network, _ = gio.get_sample_graphs(
+sample_network, _ = snu.get_sample_graphs(
     flowdirs_filename="data/d8.asc",
     sample_data_filename="data/sample_data.dat",
 )
@@ -35,14 +35,14 @@ obs_data = obs_data.drop(columns=["Bi", "S"])
 area_map = plt.imread("labels.tif")[:, :, 0]
 
 print("Building problem...")
-problem = gio.SampleNetworkUnmixer(
+problem = snu.SampleNetworkUnmixer(
     sample_network=sample_network, ny=60, nx=60, area_labels=area_map, continuous=True
 )
-element_data = gio.get_element_obs(
+element_data = snu.get_element_obs(
     element, obs_data
 )  # Return dictionary of {sample_name:concentration}
 
-gio.plot_sweep_of_regularizer_strength(problem, element_data, -2, 2, 11)
+snu.plot_sweep_of_regularizer_strength(problem, element_data, -2, 2, 11)
 
 print("Solving problem...")
 down_dict, upstream_map = problem.solve(
@@ -54,5 +54,5 @@ plt.imshow(upstream_map)
 plt.colorbar()
 plt.show()
 
-gio.visualise_downstream(pred_dict=down_dict, obs_dict=element_data, element=element)
+snu.visualise_downstream(pred_dict=down_dict, obs_dict=element_data, element=element)
 plt.show()
