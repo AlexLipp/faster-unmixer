@@ -227,7 +227,7 @@ def get_sample_graphs(
     return sample_network, sample_adjacency
 
 
-class SampleNetwork:
+class SampleNetworkUnmixer:
     """
     This class provides functionality to `unmix' a network of samples of concentration data
     to recover the upstream source concentrations.
@@ -242,7 +242,7 @@ class SampleNetwork:
 
     Methods:
         __init__:
-            Initialize the SampleNetwork class.
+            Initialize the SampleNetworkUnmixer class.
         solve:
             Solve the optimization problem.
         solve_montecarlo:
@@ -265,7 +265,7 @@ class SampleNetwork:
         ny: Optional[int] = None,
     ) -> None:
         """
-        Initialize the SampleNetwork class.
+        Initialize the SampleNetworkUnmixer class.
 
         Args:
             sample_network (nx.DiGraph): The sample network.
@@ -1103,7 +1103,7 @@ def process_data(
     obs_data = pd.read_csv(data_filename, delimiter=" ")
     obs_data = obs_data.drop(columns=excluded_elements)
 
-    problem = SampleNetwork(sample_network=sample_network)
+    problem = SampleNetworkUnmixer(sample_network=sample_network)
 
     get_unique_upstream_areas(problem.sample_network)
 

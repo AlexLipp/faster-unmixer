@@ -35,7 +35,7 @@ obs_data = obs_data.drop(columns=["Bi", "S"])
 area_map = plt.imread("labels.tif")[:, :, 0]
 
 print("Building problem...")
-problem = gio.SampleNetwork(
+problem = gio.SampleNetworkUnmixer(
     sample_network=sample_network, ny=60, nx=60, area_labels=area_map, continuous=True
 )
 element_data = gio.get_element_obs(

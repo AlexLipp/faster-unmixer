@@ -35,7 +35,7 @@ plt.figure(figsize=(15, 10))  # Visualise network
 gio.plot_network(sample_network)
 plt.show()
 print("Building problem...")
-problem = gio.SampleNetwork(sample_network=sample_network)
+problem = gio.SampleNetworkUnmixer(sample_network=sample_network)
 
 
 element_data = gio.get_element_obs(
