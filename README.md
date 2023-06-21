@@ -13,7 +13,9 @@ The algorithm requires:
 Example datasets are given in `data/d8.asc` and `sample_data.dat`.
 
 
-## Compiling
+## Compiling 
+
+The following assumes a UNIX operating systems. If running Windows OS you will need to install a [Linux subsystem](https://learn.microsoft.com/en-us/windows/wsl/about). 
 
 Check out submodules:
 ```
@@ -33,6 +35,8 @@ cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_GDAL=ON ..
 make
 cd ..
 ```
+
+A conda environment file (`requirements.yaml`) is provided containing the python dependencies. A conda environment entitled `unmixing` can be generated from it using `conda env create -f requirements.yaml`.    
 
 ### Testing compilation
 
