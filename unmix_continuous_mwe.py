@@ -13,14 +13,14 @@ The script visualizes the upstream concentration map and the predicted downstrea
 
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
+# Import sample network unmixer module.
+# This module contains the SampleNetworkUnmixer class, which builds the optimization problem and solves it.
 import sample_network_unmix as snu
 
 # Constants
 element = "Mg"  # Set element
-regularizer_strength = 10 ** (-0.8)
 
 # Load sample network
 sample_network, _ = snu.get_sample_graphs(
@@ -44,6 +44,10 @@ element_data = snu.get_element_obs(
 
 snu.plot_sweep_of_regularizer_strength(problem, element_data, -2, 2, 11)
 
+regularizer_strength = 10 ** (-0.8)
+print(
+    f"Chose regularization strength of {regularizer_strength} at 'elbow' of misfit-roughness curve."
+)
 print("Solving problem...")
 down_dict, upstream_map = problem.solve(
     element_data, regularization_strength=regularizer_strength, solver="ecos"
