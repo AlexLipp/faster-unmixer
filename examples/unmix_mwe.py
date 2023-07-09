@@ -11,13 +11,12 @@ The script also calculates unique upstream areas for each basin in the network a
 Finally, it visualizes the predicted downstream concentrations and the upstream concentration map for the specified element (default: Mg).
 """
 
-
 import matplotlib.pyplot as plt
 import pandas as pd
 
 # Import sample network unmixer module.
 # This module contains the SampleNetworkUnmixer class, which builds the optimization problem and solves it.
-import sample_network_unmix as snu
+import funmixer.sample_network_unmix as snu
 
 # Constants
 element = "Mg"  # Set element

@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
-import pyfastunmix
+
+import _funmixer_native as fn
 
 NO_DOWNSTREAM: Final[int] = 0
 SAMPLE_CODE_COL_NAME: Final[str] = "Sample.Code"
@@ -119,7 +120,7 @@ def geo_mean(x: List[float]) -> float:
 
 def nx_topological_sort_with_data(
     G: nx.DiGraph,
-) -> Iterator[Tuple[str, pyfastunmix.SampleNode]]:
+) -> Iterator[Tuple[str, fn.SampleNode]]:
     """
     Returns a topological sort of the graph, with the data of each node.
 
@@ -127,7 +128,7 @@ def nx_topological_sort_with_data(
         G (nx.DiGraph): The graph.
 
     Returns:
-        Iterator[Tuple[str, pyfastunmix.SampleNode]]: An iterator yielding tuples of node name and node data.
+        Iterator[Tuple[str, fn.SampleNode]]: An iterator yielding tuples of node name and node data.
     """
     return ((x, G.nodes[x]["data"]) for x in nx.topological_sort(G))
 
@@ -196,7 +197,7 @@ def plot_network(G: nx.DiGraph) -> None:
 def get_sample_graphs(
     flowdirs_filename: str,
     sample_data_filename: str,
-) -> Tuple[nx.DiGraph, "pyfastunmix.SampleAdjacency"]:
+) -> Tuple[nx.DiGraph, "fn.SampleAdjacency"]:
     """
     Get sample network graph and adjacency matrix from flow direction and concentration dataset files.
 
@@ -207,21 +208,19 @@ def get_sample_graphs(
     Returns:
         A tuple containing two objects:
         - sample_network: A networkx DiGraph representing the sample network.
-        - sample_adjacency: An instance of pyfastunmix.SampleAdjacency. This contains the length of shared catchment
+        - sample_adjacency: An instance of fn.SampleAdjacency. This contains the length of shared catchment
          between each node's subbasin.
 
     """
-    sample_network_raw, sample_adjacency = pyfastunmix.fastunmix(
-        flowdirs_filename, sample_data_filename
-    )
+    sample_network_raw, sample_adjacency = fn.fastunmix(flowdirs_filename, sample_data_filename)
 
     # Convert it into a networkx graph for easy use in Python
     sample_network = nx.DiGraph()
     for x in sample_network_raw.values():  # Skip the first node into which it all flows
-        if x.name == pyfastunmix.root_node_name:
+        if x.name == fn.root_node_name:
             continue
         sample_network.add_node(x.name, data=x)
-        if x.downstream_node != pyfastunmix.root_node_name:
+        if x.downstream_node != fn.root_node_name:
             sample_network.add_edge(x.name, x.downstream_node)
 
     return sample_network, sample_adjacency

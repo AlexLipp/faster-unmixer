@@ -6,7 +6,7 @@
 namespace py = pybind11;
 using namespace fastunmixer;
 
-PYBIND11_MODULE(pyfastunmix, m) {
+PYBIND11_MODULE(_funmixer_native, m) {
   m.doc() = "fastunmix module"; // optional module docstring
 
   py::class_<SampleNode>(m, "SampleNode", py::dynamic_attr())
