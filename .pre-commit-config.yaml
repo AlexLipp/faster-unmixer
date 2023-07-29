@@ -13,5 +13,5 @@ repos:
         name: Sorting import statements
         entry: bash -c 'isort "$@"; git add -u' --
         language: python
-        args: ["--filter-files"]
+        args: ["--filter-files", "--profile", "black"]
         files: \.py$
