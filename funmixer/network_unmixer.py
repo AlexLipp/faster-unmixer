@@ -31,6 +31,47 @@ ELEMENT_LIST: Final[List[str]] = ["H", "He", "Li", "Be", "B", "C", "N", "O", "F"
 ElementData = Dict[str, float]
 ExportRateData = Dict[str, float]
 
+
+@dataclass
+class SampleNode:
+    name: str
+    x: int
+    y: int
+    downstream_node: str
+    upstream_nodes: List[str]
+    area: int
+    total_upstream_area: int
+    # Properties added dynamically by Python
+    label: int
+    my_export_rate: cp.Parameter = field(default_factory=lambda: cp.Parameter(pos=True))
+    my_flux: float  # TODO: cp.Expression?
+    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+    my_total_flux: Any
+    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+    my_total_tracer_flux: Any
+    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+    my_tracer_flux: Any
+    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+    my_tracer_value: Any
+    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+    my_value: Any  # TODO: cp.Variable
+    rltv_area: Optional[float] = None
+    total_flux: Optional[cp.Expression] = None
+
+    @classmethod
+    def from_native(cls, n: fn.NativeSampleNode) -> "SampleNode":
+        return cls(
+            name=n.name,
+            x=n.x,
+            y=n.y,
+            downstream_node=n.downstream_node,
+            upstream_nodes=n.upstream_nodes,
+            area=n.area,
+            total_upstream_area=n.total_upstream_area,
+            label=n.label,
+        )
+
+
 # Solvers that can handle this problem type include:
 # ECOS, SCS
 # See: https://www.cvxpy.org/tutorial/advanced/index.html#choosing-a-solver
@@ -768,7 +809,11 @@ class InverseGrid:
     """
 
     def __init__(
-        self, nx: int, ny: int, area_labels: npt.NDArray[np.int_], sample_network: nx.DiGraph
+        self,
+        nx: int,
+        ny: int,
+        area_labels: npt.NDArray[np.int_],
+        sample_network: nx.DiGraph,
     ) -> None:
         """
         Initialize an InverseGrid object.
@@ -916,7 +961,9 @@ def mix_downstream(
     return mixed_downstream_pred, mixed_upstream_pred
 
 
-def get_unique_upstream_areas(sample_network: nx.DiGraph) -> Dict[str, npt.NDArray[np.bool_]]:
+def get_unique_upstream_areas(
+    sample_network: nx.DiGraph,
+) -> Dict[str, npt.NDArray[np.bool_]]:
     """
     Generates a dictionary mapping sample numbers to unique upstream areas as boolean masks.
 
@@ -989,7 +1036,8 @@ def plot_sweep_of_regularizer_strength(
 
 
 def get_upstream_concentration_map(
-    areas: Dict[str, npt.NDArray[np.bool_]], upstream_preds: Dict[str, npt.NDArray[np.float_]]
+    areas: Dict[str, npt.NDArray[np.bool_]],
+    upstream_preds: Dict[str, npt.NDArray[np.float_]],
 ) -> npt.NDArray[np.float_]:
     """
     Generate a two-dimensional map displaying the predicted upstream concentration for a given element for each unique upstream area.
