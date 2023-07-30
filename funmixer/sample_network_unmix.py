@@ -862,11 +862,14 @@ def mix_downstream(
         # If provided, set export rates from user input
         # else default to equal rate (absolute value is arbitrary)
 
-        my_data.my_export_rate = export_rates[sample_name] if export_rates else 1
+        export_rate = export_rates[sample_name] if export_rates else 1
+        # TODO: Remove this once we default construction set up for the class
+        my_data.my_export_rate = cp.Parameter(pos=True)
+        my_data.my_export_rate.value = export_rate
 
         my_data.my_tracer_value = np.mean(concentration_map[areas[sample_name]])
         # area weighted total contribution of material from this node
-        my_data.my_flux = my_data.area * my_data.my_export_rate
+        my_data.my_flux = my_data.area * export_rate
         # Add the flux I generate to the total flux passing through me
         my_data.my_total_flux += my_data.my_flux
 
