@@ -11,3 +11,4 @@ build/
 *.so
 cyth_scripts.c
 *.egg-info
+.pyre/

@@ -12,51 +12,58 @@ The script visualizes the upstream concentration map and the predicted downstrea
 """
 
 
+# pyre-fixme[21]: Could not find module `matplotlib.pyplot`.
 import matplotlib.pyplot as plt
 import pandas as pd
 
 # Import sample network unmixer module.
 # This module contains the SampleNetworkUnmixer class, which builds the optimization problem and solves it.
-import sample_network_unmix as snu
+import funmixer
 
-# Constants
-element = "Mg"  # Set element
 
-# Load sample network
-sample_network, _ = snu.get_sample_graphs(
-    flowdirs_filename="data/d8.asc",
-    sample_data_filename="data/sample_data.dat",
-)
+def main() -> None:
+    # Constants
+    element = "Mg"  # Set element
 
-# Load in observations
-obs_data = pd.read_csv("data/sample_data.dat", delimiter=" ")
-obs_data = obs_data.drop(columns=["Bi", "S"])
+    # Load sample network
+    sample_network, _ = funmixer.get_sample_graphs(
+        flowdirs_filename="data/d8.asc",
+        sample_data_filename="data/sample_data.dat",
+    )
 
-area_map = plt.imread("labels.tif")[:, :, 0]
+    # Load in observations
+    obs_data = pd.read_csv("data/sample_data.dat", delimiter=" ")
+    obs_data = obs_data.drop(columns=["Bi", "S"])
 
-print("Building problem...")
-problem = snu.SampleNetworkUnmixer(
-    sample_network=sample_network, ny=60, nx=60, area_labels=area_map, continuous=True
-)
-element_data = snu.get_element_obs(
-    element, obs_data
-)  # Return dictionary of {sample_name:concentration}
+    area_map = plt.imread("labels.tif")[:, :, 0]
 
-snu.plot_sweep_of_regularizer_strength(problem, element_data, -2, 2, 11)
+    print("Building problem...")
+    problem = funmixer.SampleNetworkUnmixer(
+        sample_network=sample_network, ny=60, nx=60, area_labels=area_map, continuous=True
+    )
+    element_data = funmixer.get_element_obs(
+        element, obs_data
+    )  # Return dictionary of {sample_name:concentration}
 
-regularizer_strength = 10 ** (-0.8)
-print(
-    f"Chose regularization strength of {regularizer_strength} at 'elbow' of misfit-roughness curve."
-)
-print("Solving problem...")
-down_dict, upstream_map = problem.solve(
-    element_data, regularization_strength=regularizer_strength, solver="ecos"
-)
+    funmixer.plot_sweep_of_regularizer_strength(problem, element_data, -2, 2, 11)
 
-print("Visualising output...")
-plt.imshow(upstream_map)
-plt.colorbar()
-plt.show()
+    regularizer_strength = 10 ** (-0.8)
+    print(
+        f"Chose regularization strength of {regularizer_strength} at 'elbow' of misfit-roughness curve."
+    )
+    print("Solving problem...")
+    down_dict, upstream_map = problem.solve(
+        element_data, regularization_strength=regularizer_strength, solver="ecos"
+    )
 
-snu.visualise_downstream(pred_dict=down_dict, obs_dict=element_data, element=element)
-plt.show()
+    print("Visualising output...")
+    plt.imshow(upstream_map)
+    plt.colorbar()
+    plt.show()
+
+    funmixer.visualise_downstream(pred_dict=down_dict, obs_dict=element_data, element=element)
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()

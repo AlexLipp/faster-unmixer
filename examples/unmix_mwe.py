@@ -11,59 +11,71 @@ The script also calculates unique upstream areas for each basin in the network a
 Finally, it visualizes the predicted downstream concentrations and the upstream concentration map for the specified element (default: Mg).
 """
 
+# pyre-fixme[21]: Could not find module `matplotlib.pyplot`.
 import matplotlib.pyplot as plt
 import pandas as pd
 
 # Import sample network unmixer module.
 # This module contains the SampleNetworkUnmixer class, which builds the optimization problem and solves it.
-import funmixer.sample_network_unmix as snu
-
-# Constants
-element = "Mg"  # Set element
-
-# Load sample network
-sample_network, _ = snu.get_sample_graphs(
-    flowdirs_filename="data/d8.asc",
-    sample_data_filename="data/sample_data.dat",
-)
-
-# Load in observations
-obs_data = pd.read_csv("data/sample_data.dat", delimiter=" ")
-obs_data = obs_data.drop(columns=["Bi", "S"])
-
-plt.figure(figsize=(15, 10))  # Visualise network
-snu.plot_network(sample_network)
-plt.show()
-print("Building problem...")
-problem = snu.SampleNetworkUnmixer(sample_network=sample_network)
+import funmixer
 
 
-element_data = snu.get_element_obs(
-    element, obs_data
-)  # Return dictionary of {sample_name:concentration}
+def main() -> None:
+    # Constants
+    element = "Mg"  # Set element
 
-snu.plot_sweep_of_regularizer_strength(problem, element_data, -5, -1, 11)
-regularizer_strength = 10 ** (-3.0)
-print(
-    f"Chose regularization strength of {regularizer_strength} at 'elbow' of misfit-roughness curve."
-)
+    # Load sample network
+    sample_network, _ = funmixer.get_sample_graphs(
+        flowdirs_filename="data/d8.asc",
+        sample_data_filename="data/sample_data.dat",
+    )
 
-print("Solving problem...")
-element_pred_down, element_pred_upstream = problem.solve(
-    element_data, solver="ecos", regularization_strength=10 ** (-3)
-)
+    # Load in observations
+    obs_data = pd.read_csv("data/sample_data.dat", delimiter=" ")
+    obs_data = obs_data.drop(columns=["Bi", "S"])
 
-area_dict = snu.get_unique_upstream_areas(sample_network)  # Extract areas for each basin
-upstream_map = snu.get_upstream_concentration_map(
-    area_dict, element_pred_upstream
-)  # Assign to upstream preds
+    plt.figure(figsize=(15, 10))  # Visualise network
+    funmixer.plot_network(sample_network)
+    plt.show()
+    print("Building problem...")
+    problem = funmixer.SampleNetworkUnmixer(sample_network=sample_network)
 
-# Visualise outputs downstream
-snu.visualise_downstream(pred_dict=element_pred_down, obs_dict=element_data, element=element)
-plt.show()
-# Visualise outputs upstream
-plt.imshow(upstream_map)
-cb = plt.colorbar()
-cb.set_label(element + "concentration mg/kg")
-plt.title("Upstream Concentration Map")
-plt.show()
+    element_data = funmixer.get_element_obs(
+        element, obs_data
+    )  # Return dictionary of {sample_name:concentration}
+
+    funmixer.plot_sweep_of_regularizer_strength(problem, element_data, -5, -1, 11)
+    regularizer_strength = 10 ** (-3.0)
+    print(
+        f"Chose regularization strength of {regularizer_strength} at 'elbow' of misfit-roughness curve."
+    )
+
+    print("Solving problem...")
+    element_pred_down, element_pred_upstream = problem.solve(
+        element_data, solver="ecos", regularization_strength=10 ** (-3)
+    )
+
+    area_dict = funmixer.get_unique_upstream_areas(sample_network)  # Extract areas for each basin
+    upstream_map = funmixer.get_upstream_concentration_map(
+        # pyre-fixme[6]: For 2nd argument expected `Dict[str, ndarray[typing.Any,
+        #  dtype[typing.Any]]]` but got `Union[ndarray[typing.Any, typing.Any], Dict[str,
+        #  float]]`.
+        area_dict,
+        element_pred_upstream,
+    )  # Assign to upstream preds
+
+    # Visualise outputs downstream
+    funmixer.visualise_downstream(
+        pred_dict=element_pred_down, obs_dict=element_data, element=element
+    )
+    plt.show()
+    # Visualise outputs upstream
+    plt.imshow(upstream_map)
+    cb = plt.colorbar()
+    cb.set_label(element + "concentration mg/kg")
+    plt.title("Upstream Concentration Map")
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()

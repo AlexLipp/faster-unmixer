@@ -3,17 +3,23 @@ import os
 import tempfile
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, Final, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Final, Iterator, List, Optional, Tuple, Union, DefaultDict
 
 # TODO(rbarnes): Make a requirements file for conda
 import cvxpy as cp
+
+# pyre-fixme[21]: Could not find module `matplotlib.image`.
 import matplotlib.image as mpimg
+
+# pyre-fixme[21]: Could not find module `matplotlib.pyplot`.
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import _funmixer_native as fn
+from .cvxpy_extensions import ReciprocalParameter, cp_log_ratio
 
 NO_DOWNSTREAM: Final[int] = 0
 SAMPLE_CODE_COL_NAME: Final[str] = "Sample.Code"
@@ -22,87 +28,27 @@ ELEMENT_LIST: Final[List[str]] = ["H", "He", "Li", "Be", "B", "C", "N", "O", "F"
 ElementData = Dict[str, float]
 ExportRateData = Dict[str, float]
 
-
-class ReciprocalParameter:
-    """
-    Used for times when you want a cvxpy Parameter and its ratio.
-
-    Attributes:
-        p (cp.Parameter): The original parameter.
-        rp (cp.Parameter): The reciprocal of the original parameter.
-    """
-
-    def __init__(self, *args, **kwargs) -> None:
-        """
-        Initialize the ReciprocalParameter.
-
-        Note:
-            The ReciprocalParameter creates two underlying cp.Parameters: `p` and `rp`, which represent
-            the original parameter and its reciprocal, respectively.
-        """
-
-        self._p = cp.Parameter(*args, **kwargs)
-        # Reciprocal of the above
-        self._rp = cp.Parameter(*args, **kwargs)
-
-    @property
-    def value(self) -> Optional[float]:
-        """
-        Get the value of the ReciprocalParameter.
-
-        Returns:
-            Optional[float]: The value of the original parameter.
-        """
-        return self._p.value
-
-    @value.setter
-    def value(self, val: Optional[float]) -> None:
-        """
-        Set the value of the ReciprocalParameter and its reciprocal.
-
-        Args:
-            val (Optional[float]): The value to be set for the original parameter.
-
-        Note:
-            The method sets the value of the original parameter (`_p`) to the specified value (`val`), and
-            sets the value of the reciprocal parameter (`_rp`) to 1/val.
-        """
-        self._p.value = val
-        self._rp.value = 1 / val if val is not None else None
-
-    @property
-    def p(self) -> cp.Parameter:
-        """
-        Get the original parameter.
-
-        Returns:
-            cp.Parameter: The original parameter.
-        """
-        return self._p
-
-    @property
-    def rp(self) -> cp.Parameter:
-        """
-        Get the reciprocal of the parameter.
-
-        Returns:
-            cp.Parameter: The reciprocal of the parameter.
-        """
-        return self._rp
-
-
-def cp_log_ratio(a: cp.Variable, b: ReciprocalParameter) -> cp.Expression:
-    """
-    Returns a convex version of the log-ratio of a CVXPY variable and a Parameter.
-
-    Args:
-        a (cp.Variable): The CVXPY variable.
-        b (ReciprocalParameter): The ReciprocalParameter representing the parameter value.
-
-    Returns:
-        cp.Expression: A convex expression representing a substitute for log-ratio of a and b.
-    """
-    return cp.maximum(a * b.rp, b.p * cp.inv_pos(a))
+# Solvers that can handle this problem type include:
+# ECOS, SCS
+# See: https://www.cvxpy.org/tutorial/advanced/index.html#choosing-a-solver
+# See: https://www.cvxpy.org/tutorial/advanced/index.html#setting-solver-options
+SOLVERS: Dict[str, Any] = {
+    # VERY SLOW, probably don't use
+    "scip": {
+        "solver": cp.SCIP,
+        "verbose": True,
+    },
+    "ecos": {
+        "solver": cp.ECOS,
+        "verbose": False,
+        "max_iters": 10000,
+        "abstol_inacc": 5e-5,
+        "reltol_inacc": 5e-5,
+        "feastol_inacc": 1e-4,
+    },
+    "scs": {"solver": cp.SCS, "verbose": True, "max_iters": 10000},
+    "gurobi": {"solver": cp.GUROBI, "verbose": False, "NumericFocus": 3},
+}
 
 
 def geo_mean(x: List[float]) -> float:
@@ -115,6 +61,8 @@ def geo_mean(x: List[float]) -> float:
     Returns:
         float: The geometric mean of the numbers in the list.
     """
+    # pyre-fixme[6]: For 1st argument expected `Union[bytes, complex, float, int,
+    #  generic, str]` but got `List[float]`.
     return np.exp(np.log(x).mean())
 
 
@@ -130,6 +78,7 @@ def nx_topological_sort_with_data(
     Returns:
         Iterator[Tuple[str, fn.SampleNode]]: An iterator yielding tuples of node name and node data.
     """
+    # pyre-fixme[16]: `None` has no attribute `__iter__`.
     return ((x, G.nodes[x]["data"]) for x in nx.topological_sort(G))
 
 
@@ -259,7 +208,7 @@ class SampleNetworkUnmixer:
         sample_network: nx.DiGraph,
         use_regularization: bool = True,
         continuous: bool = False,
-        area_labels: Optional[np.ndarray] = None,
+        area_labels: Optional[npt.NDArray[np.int_]] = None,
         nx: Optional[int] = None,
         ny: Optional[int] = None,
     ) -> None:
@@ -277,16 +226,20 @@ class SampleNetworkUnmixer:
 
         self.sample_network = sample_network
         self.continuous: bool = continuous
+        # TODO: Use a subclass, avoid polymorphism
         if self.continuous:
-            self.grid = InverseGrid(nx, ny, area_labels, sample_network)
+            assert nx is not None
+            assert ny is not None
+            assert area_labels is not None
+            self.grid: InverseGrid = InverseGrid(nx, ny, area_labels, sample_network)
         self._site_to_observation: Dict[str, ReciprocalParameter] = {}
         self._site_to_export_rate: Dict[str, cp.Parameter] = {}
         self._site_to_total_flux: Dict[str, ReciprocalParameter] = {}
-        self._primary_terms = []
-        self._regularizer_terms = []
-        self._constraints = []
+        self._primary_terms: List[cp.Expression] = []
+        self._regularizer_terms: List[cp.Expression] = []
+        self._constraints: List[cp.Constraint] = []
         self._regularizer_strength = cp.Parameter(nonneg=True)
-        self._problem = None
+        self._problem: Optional[cp.Problem] = None
         self._build_primary_terms()
         if use_regularization:
             if continuous:
@@ -420,6 +373,7 @@ class SampleNetworkUnmixer:
         # Create and solve the problem
         print("Compiling problem...")
         self._problem = cp.Problem(cp.Minimize(objective), constraints)
+        # pyre-fixme[28]: Unexpected keyword argument `dpp`.
         assert self._problem.is_dcp(dpp=True)
 
     def _set_observation_parameters(self, observation_data: ElementData) -> None:
@@ -427,7 +381,7 @@ class SampleNetworkUnmixer:
         Reset and set the observation parameters according to input observations.
 
         Args:
-            observation_data (ElementData): The observation data.
+            observation_data: The observation data.
         """
         obs_mean: float = geo_mean(list(observation_data.values()))
         # Reset all sites' observations
@@ -443,7 +397,7 @@ class SampleNetworkUnmixer:
         for x in self._site_to_observation.values():
             assert x.value is not None
 
-    def _set_export_rate_parameters(self, export_rates: Optional[ExportRateData] = None):
+    def _set_export_rate_parameters(self, export_rates: Optional[ExportRateData] = None) -> None:
         """
         Reset and set the export rate parameters according to input export rates.
 
@@ -467,7 +421,7 @@ class SampleNetworkUnmixer:
         for x in self._site_to_export_rate.values():
             assert x.value is not None
 
-    def _set_total_flux_parameters(self):
+    def _set_total_flux_parameters(self) -> None:
         """
         Reset and set the total flux parameters according to total fluxes calculated in network.
         """
@@ -488,7 +442,7 @@ class SampleNetworkUnmixer:
         export_rates: Optional[ExportRateData] = None,
         regularization_strength: Optional[float] = None,
         solver: str = "gurobi",
-    ) -> Union[Tuple[ElementData, ElementData], Tuple[ElementData, np.ndarray]]:
+    ) -> Union[Tuple[ElementData, ElementData], Tuple[ElementData, npt.NDArray[np.float_]]]:
         """
         Solves the optimization problem.
 
@@ -497,17 +451,16 @@ class SampleNetworkUnmixer:
         using the specified solver.
 
         Args:
-            observation_data (ElementData): The observed data for each element.
-            export_rates (Optional[ExportRateData]): The export rates for each element (default: None). If not provided these are all set to 1.
-            regularization_strength (Optional[float]): The strength of the regularization term (default: None).
-            solver (str): The solver to use for solving the optimization problem (default: "gurobi").
+            observation_data: The observed data for each element.
+            export_rates: The export rates for each element. If not provided these are all set to 1.
+            regularization_strength: The strength of the regularization term
+            solver: The solver to use for solving the optimization problem
 
         Returns:
-            Union[Tuple[ElementData, ElementData], Tuple[ElementData, np.ndarray]]:
-                A tuple containing the downstream and upstream predictions.
-                - If solving continuously, the downstream and upstream predictions are returned as a `np.ndarray` 2D map.
-                - If solving discretely, the downstream and upstream predictions are returned as `ElementData`,
-                  which is a dictionary-like object containing the concentrations for each element.
+            A tuple containing the downstream and upstream predictions.
+            - If solving continuously, the downstream and upstream predictions are returned as a `np.ndarray` 2D map.
+            - If solving discretely, the downstream and upstream predictions are returned as `ElementData`,
+                which is a dictionary-like object containing the concentrations for each element.
 
         Raises:
             Exception: If regularizer terms are present but no regularization strength is assigned.
@@ -528,34 +481,20 @@ class SampleNetworkUnmixer:
             raise Exception("WARNING: Regularizer terms present but no strength assigned.")
         self._regularizer_strength.value = regularization_strength
 
-        # Solvers that can handle this problem type include:
-        # ECOS, SCS
-        # See: https://www.cvxpy.org/tutorial/advanced/index.html#choosing-a-solver
-        # See: https://www.cvxpy.org/tutorial/advanced/index.html#setting-solver-options
-        solvers = {
-            # VERY SLOW, probably don't use
-            "scip": {
-                "solver": cp.SCIP,
-                "verbose": True,
-            },
-            "ecos": {
-                "solver": cp.ECOS,
-                "verbose": False,
-                "max_iters": 10000,
-                "abstol_inacc": 5e-5,
-                "reltol_inacc": 5e-5,
-                "feastol_inacc": 1e-4,
-            },
-            "scs": {"solver": cp.SCS, "verbose": True, "max_iters": 10000},
-            "gurobi": {"solver": cp.GUROBI, "verbose": False, "NumericFocus": 3},
-        }
-        objective_value = self._problem.solve(**solvers[solver])
+        if solver not in SOLVERS:
+            raise Exception(
+                f"Solver {solver} not supported. Supported solvers are {list(SOLVERS.keys())}"
+            )
+
+        assert (problem := self._problem) is not None
+        objective_value = problem.solve(**SOLVERS[solver])
         print(
             "{color}Status = {status}\033[39m".format(
-                color="" if self._problem.status == "optimal" else "\033[91m",
-                status=self._problem.status,
+                color="" if problem.status == "optimal" else "\033[91m",
+                status=problem.status,
             )
         )
+
         print(f"Objective value = {objective_value}")
 
         # Return outputs
@@ -565,6 +504,7 @@ class SampleNetworkUnmixer:
         downstream_preds = {sample: value * obs_mean for sample, value in downstream_preds.items()}
         # If solving continuously return a map on resolution base DEM
 
+        # TODO: This polymorphic behaviour is unpleasant. Use a subclass.
         if self.continuous:
             upstream_preds = self.get_upstream_prediction_map() * obs_mean
         # If solving discrete return a dictionary of values corresponding to each sample site
@@ -572,6 +512,10 @@ class SampleNetworkUnmixer:
             upstream_preds = self.get_upstream_prediction_dictionary()
             upstream_preds = {sample: value * obs_mean for sample, value in upstream_preds.items()}
 
+        # pyre-fixme[7]: Expected `Union[Tuple[Dict[str, float], Dict[str, float]],
+        #  Tuple[Dict[str, float], ndarray[typing.Any, typing.Any]]]` but got
+        #  `Tuple[Dict[str, float], Union[Dict[str, float], ndarray[typing.Any,
+        #  dtype[typing.Any]]]]`.
         return downstream_preds, upstream_preds
 
     def solve_montecarlo(
@@ -582,8 +526,8 @@ class SampleNetworkUnmixer:
         regularization_strength: Optional[float] = None,
         solver: str = "gurobi",
     ) -> Union[
-        Tuple[Dict[str, List[float]], List[np.ndarray]],
-        Tuple[Dict[str, List[float]], Dict[str, List[float]]],
+        Tuple[DefaultDict[str, List[float]], List[npt.NDArray[np.float_]]],
+        Tuple[DefaultDict[str, List[float]], Dict[str, List[float]]],
     ]:
         """
         Solves the optimization problem using Monte Carlo simulation.
@@ -622,7 +566,7 @@ class SampleNetworkUnmixer:
             A higher value results in a smoother solution with more emphasis on the regularization terms.
             A lower value results in a solution that fits the observed data more closely but may `overfit' data.
         """
-        predictions_down_mc = defaultdict(list)
+        predictions_down_mc: DefaultDict[str, List[float]] = defaultdict(list)
 
         if self.continuous:
             predictions_up_mc = []
@@ -694,7 +638,7 @@ class SampleNetworkUnmixer:
             predictions[sample_name] = data.my_tracer_value.value
         return predictions
 
-    def get_upstream_prediction_map(self) -> np.ndarray:
+    def get_upstream_prediction_map(self) -> npt.NDArray[np.float_]:
         """
         Returns the upstream predictions as a map.
 
@@ -703,7 +647,7 @@ class SampleNetworkUnmixer:
         for that area.
 
         Returns:
-            np.ndarray: A numpy array representing the upstream predictions as a map.
+            A numpy array representing the upstream predictions as a map.
 
         Raises:
             Exception: If the network is discrete, this method is not valid for upstream predictions.
@@ -798,7 +742,9 @@ class InverseGrid:
         sites_to_nodes : Dict mapping sample numbers to list of nodes in its upstream area
     """
 
-    def __init__(self, nx: int, ny: int, area_labels: np.array, sample_network: nx.DiGraph) -> None:
+    def __init__(
+        self, nx: int, ny: int, area_labels: npt.NDArray[np.int_], sample_network: nx.DiGraph
+    ) -> None:
         """
         Initialize an InverseGrid object.
 
@@ -840,12 +786,12 @@ class InverseGrid:
         # The x and y coordinates on the DEM of the *centres* of the rectangular nodes
         xs = np.linspace(start=xstep / 2, stop=xmax - xstep / 2, num=nx)
         ys = np.linspace(start=ystep / 2, stop=ymax - ystep / 2, num=ny)
-        self.sites_to_nodes = defaultdict(list)
+        self.sites_to_nodes: DefaultDict[str, List[InverseNode]] = defaultdict(list)
         # Map area labels to sample numbers
         area_label_to_sample_name = {
             data["data"].label: node for node, data in sample_network.nodes(data=True)
         }
-        self.node_arr = np.empty((ny, nx), dtype=object)
+        self.node_arr: npt.NDArray[InverseNode] = np.empty((ny, nx), dtype=object)
         # Loop through a (nx, ny) grid
         for i, x_coord in enumerate(xs):
             for j, y_coord in enumerate(ys):
@@ -881,6 +827,7 @@ def get_element_obs(element: str, obs_data: pd.DataFrame) -> ElementData:
     """
     element_data: ElementData = {
         e: c
+        # pyre-fixme[29]: `Series` is not a function.
         for e, c in zip(obs_data[SAMPLE_CODE_COL_NAME].tolist(), obs_data[element].tolist())
         if isinstance(c, float)
     }
@@ -889,8 +836,8 @@ def get_element_obs(element: str, obs_data: pd.DataFrame) -> ElementData:
 
 def mix_downstream(
     sample_network: nx.DiGraph,
-    areas: Dict[str, np.ndarray],
-    concentration_map: np.ndarray,
+    areas: Dict[str, npt.NDArray[np.float_]],
+    concentration_map: npt.NDArray[np.float_],
     export_rates: Optional[ExportRateData] = None,
 ) -> Tuple[ElementData, ElementData]:
     """Mixes a given concentration map along drainage, predicting the downstream concentration at sample sites
@@ -941,7 +888,7 @@ def mix_downstream(
     return mixed_downstream_pred, mixed_upstream_pred
 
 
-def get_unique_upstream_areas(sample_network: nx.DiGraph) -> Dict[str, np.ndarray]:
+def get_unique_upstream_areas(sample_network: nx.DiGraph) -> Dict[str, npt.NDArray[np.bool_]]:
     """
     Generates a dictionary mapping sample numbers to unique upstream areas as boolean masks.
 
@@ -949,8 +896,8 @@ def get_unique_upstream_areas(sample_network: nx.DiGraph) -> Dict[str, np.ndarra
         sample_network (nx.DiGraph): The network of sample sites along the drainage, with associated data.
 
     Returns:
-        Dict[str, np.ndarray]: A dictionary where the keys are sample numbers and the values are boolean masks
-            representing the unique upstream areas for each sample site.
+        A dictionary where the keys are sample numbers and the values are boolean masks
+        representing the unique upstream areas for each sample site.
 
     Note:
         The function generates a dictionary that maps each sample number in the sample network onto a boolean mask
@@ -970,21 +917,21 @@ def get_unique_upstream_areas(sample_network: nx.DiGraph) -> Dict[str, np.ndarra
 
 
 def plot_sweep_of_regularizer_strength(
-    sample_network: nx.DiGraph,
+    sample_network: SampleNetworkUnmixer,
     element_data: ElementData,
     min_: float,
     max_: float,
-    trial_num: float,
+    trial_num: int,
 ) -> None:
     """
     Plot a sweep of regularization strengths and their impact on roughness and data misfit.
 
     Args:
-        sample_network (nx.DiGraph): The network of sample sites along the drainage, with associated data.
-        element_data (ElementData): Dictionary of element data.
-        min_ (float): The minimum exponent for the logspace range of regularization strengths to try.
-        max_ (float): The maximum exponent for the logspace range of regularization strengths to try.
-        trial_num (float): The number of regularization strengths to try within the specified range.
+        sample_network: The network of sample sites along the drainage, with associated data.
+        element_data: Dictionary of element data.
+        min_: The minimum exponent for the logspace range of regularization strengths to try.
+        max_: The maximum exponent for the logspace range of regularization strengths to try.
+        trial_num: The number of regularization strengths to try within the specified range.
 
     Note:
         The function performs a sweep of regularization strengths within a specified logspace range and plots their
@@ -1000,9 +947,6 @@ def plot_sweep_of_regularizer_strength(
         The function also prints the roughness and data misfit values for each regularization strength value.
 
         Finally, the function displays the scatter plot with appropriate axis labels.
-
-    Returns:
-        None
     """
     vals = np.logspace(min_, max_, num=trial_num)  # regularizer strengths to try
     for val in vals:
@@ -1020,13 +964,15 @@ def plot_sweep_of_regularizer_strength(
     plt.show()
 
 
-def get_upstream_concentration_map(areas, upstream_preds):
+def get_upstream_concentration_map(
+    areas: Dict[str, npt.NDArray[np.bool_]], upstream_preds: Dict[str, npt.NDArray[np.float_]]
+) -> npt.NDArray[np.float_]:
     """
     Generate a two-dimensional map displaying the predicted upstream concentration for a given element for each unique upstream area.
 
     Args:
-        areas (Dict[str, np.ndarray]): Dictionary mapping sample numbers onto a boolean mask representing the unique upstream areas.
-        upstream_preds (ElementData): Dictionary of predicted upstream concentrations.
+        areas: Dictionary mapping sample numbers onto a boolean mask representing the unique upstream areas.
+        upstream_preds: Dictionary of predicted upstream concentrations.
 
     Returns:
         np.ndarray: A two-dimensional map displaying the predicted upstream concentration for each unique upstream area.
@@ -1047,18 +993,17 @@ def get_upstream_concentration_map(areas, upstream_preds):
     out = np.zeros(list(areas.values())[0].shape)  # initialise output
     for sample_name, value in upstream_preds.items():
         out[areas[sample_name]] += value
-        ###
     return out
 
 
-def visualise_downstream(pred_dict, obs_dict, element: str) -> None:
+def visualise_downstream(pred_dict: ElementData, obs_dict: ElementData, element: str) -> None:
     """
     Visualize the predicted downstream concentrations against the observed concentrations for a given element.
 
     Args:
-        pred_dict (ElementData): Dictionary of predicted downstream concentrations.
-        obs_dict (ElementData): Dictionary of observed downstream concentrations.
-        element (str): The symbol of the element.
+        pred_dict: Predicted downstream concentrations.
+        obs_dict: Observed downstream concentrations.
+        element: The symbol of the element.
 
     Note:
         The function takes three inputs: `pred_dict`, which is a dictionary of predicted downstream concentrations,
@@ -1072,13 +1017,8 @@ def visualise_downstream(pred_dict, obs_dict, element: str) -> None:
         Additionally, a diagonal line is plotted as a reference, and the axis limits are set to show the data points
         without excessive padding. The aspect ratio of the plot is set to 1.
     """
-    obs = []
-    pred = []
-    for sample in obs_dict:
-        obs += [obs_dict[sample]]
-        pred += [pred_dict[sample]]
-    obs = np.asarray(obs)
-    pred = np.asarray(pred)
+    obs = np.asarray([v for v in obs_dict.values()])
+    pred = np.asarray([v for v in pred_dict.values()])
     plt.scatter(x=obs, y=pred)
     plt.yscale("log")
     plt.xscale("log")
@@ -1106,6 +1046,9 @@ def process_data(
 
     get_unique_upstream_areas(problem.sample_network)
 
+    if len(ELEMENT_LIST) == 0:
+        raise Exception("No elements to process!")
+
     results = None
     # TODO(r-barnes,alexlipp): Loop over all elements once we achieve acceptable results
     for element in ELEMENT_LIST[0:20]:
@@ -1128,6 +1071,7 @@ def process_data(
         results[element + "_obs"] = [element_data[sample] for sample in element_data]
         results[element + "_dwnst_prd"] = [predictions[sample] for sample in element_data]
 
+    assert results is not None
     return results
 
 

@@ -1,5 +1,6 @@
 import subprocess
 from glob import glob
+from typing import List
 
 import setuptools
 from pybind11.setup_helpers import Pybind11Extension
@@ -7,21 +8,21 @@ from pybind11.setup_helpers import Pybind11Extension
 __version__ = "0.0.1"
 
 
-def get_gdal_config(option):
+def get_gdal_config(option: str) -> str:
     gdal_config_cmd = ["gdal-config", f"--{option}"]
     result = subprocess.run(gdal_config_cmd, capture_output=True, text=True)
     return result.stdout.strip()
 
 
-def get_arg(s: str, prefix: str):
+def get_arg(s: str, prefix: str) -> List[str]:
     return [x.replace(prefix, "") for x in s.split() if x.startswith(prefix)]
 
 
-gdal_include_dir = get_arg(get_gdal_config("cflags"), "-I")
-gdal_library_dir = get_arg(get_gdal_config("libs"), "-L")
-gdal_deplibs_dir = get_arg(get_gdal_config("dep-libs"), "-L")
-gdal_libs = get_arg(get_gdal_config("libs"), "-l")
-gdal_deplibs = get_arg(get_gdal_config("dep-libs"), "-l")
+gdal_include_dir: List[str] = get_arg(get_gdal_config("cflags"), "-I")
+gdal_library_dir: List[str] = get_arg(get_gdal_config("libs"), "-L")
+gdal_deplibs_dir: List[str] = get_arg(get_gdal_config("dep-libs"), "-L")
+gdal_libs: List[str] = get_arg(get_gdal_config("libs"), "-l")
+gdal_deplibs: List[str] = get_arg(get_gdal_config("dep-libs"), "-l")
 
 # NOTE:
 # ImportError: dynamic module does not define module export function (PyInit__funmixer_native)
@@ -58,6 +59,8 @@ setuptools.setup(
     author_email="rijard.barnes@gmail.com",
     license="GPLv3",
     packages=setuptools.find_packages(),
+    # pyre-fixme[6]: For 9th argument expected `List[Extension]` but got
+    #  `List[Pybind11Extension]`.
     ext_modules=ext_modules,
     keywords="GIS hydrology raster networks",
     python_requires=">= 3.8, <4",

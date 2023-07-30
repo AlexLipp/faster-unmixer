@@ -15,9 +15,29 @@ class SampleNode:
   area: int
   total_upstream_area: int
   # Properties added dynamically by Python
-  my_value: Any # TODO: cp.Variable
-  my_flux: Any # TODO: cp.Expression?
-  total_flux: Any # TODO: cp.Expression?
   label: int
+  # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+  my_export_rate: Any
+  my_export_rate: Any
+  # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+  my_flux: Any # TODO: cp.Expression?
+  # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+  my_total_flux: Any
+  my_total_flux: Any
+  # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+  my_total_tracer_flux: Any
+  my_total_tracer_flux: Any
+  # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+  my_tracer_flux: Any
+  my_tracer_flux: Any
+  # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+  my_tracer_value: Any
+  my_tracer_value: Any
+  # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+  my_value: Any # TODO: cp.Variable
+  # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+  rltv_area: Any
+  # pyre-fixme[4]: Attribute annotation cannot be `Any`.
+  total_flux: Any # TODO: cp.Expression?
 
 def fastunmix(flowdirs_filename: str, sample_data_filename: str) -> Tuple[Dict[str, SampleNode], SampleAdjacency]: ...
