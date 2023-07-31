@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import logging
 import os
 import tempfile
 import time
@@ -18,6 +19,7 @@ import networkx as nx
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import tqdm
 
 import _funmixer_native as fn
 from .cvxpy_extensions import ReciprocalParameter, cp_log_ratio
@@ -50,6 +52,8 @@ SOLVERS: Dict[str, Any] = {
     "scs": {"solver": cp.SCS, "verbose": True, "max_iters": 10000},
     "gurobi": {"solver": cp.GUROBI, "verbose": False, "NumericFocus": 3},
 }
+
+logger = logging.getLogger()
 
 
 @dataclass
@@ -498,16 +502,15 @@ class SampleNetworkUnmixer:
             )
 
         assert (problem := self._problem) is not None
-        print("Solving problem...")
+        logger.info("Solving problem...")
         start_solve_time = time.time()
         objective_value = problem.solve(**SOLVERS[solver])
-        print(
-            "{color}Status = {status}\033[39m".format(
-                color="" if problem.status == "optimal" else "\033[91m",
-                status=problem.status,
-            )
-        )
         end_solve_time = time.time()
+
+        if problem.status == "optimal":
+            logger.info(f"Status = {problem.status}")
+        else:
+            logger.warning(f"Status = {problem.status}")
 
         # Return outputs
         obs_mean: float = geo_mean(list(observation_data.values()))
@@ -524,13 +527,11 @@ class SampleNetworkUnmixer:
             upstream_preds = self.get_upstream_prediction_dictionary()
             upstream_preds = {sample: value * obs_mean for sample, value in upstream_preds.items()}
 
-        print(f"Objective value = {objective_value}")
-
-        print(f"Objective value = {objective_value}")
-        print(f"Total time = {end_solve_time - start_solve_time}")
-        print(f"Solver name = {problem.solver_stats.solver_name}")
-        print(f"Solve time = {problem.solver_stats.solve_time}")
-        print(f"Setup time = {problem.solver_stats.setup_time}")
+        logger.info(f"Objective value = {objective_value}")
+        logger.info(f"Total time = {end_solve_time - start_solve_time}")
+        logger.info(f"Solver name = {problem.solver_stats.solver_name}")
+        logger.info(f"Solve time = {problem.solver_stats.solve_time}")
+        logger.info(f"Setup time = {problem.solver_stats.setup_time}")
 
         return FunmixerSolution(
             objective_value=float(objective_value),
@@ -976,14 +977,10 @@ def plot_sweep_of_regularizer_strength(
         Finally, the function displays the scatter plot with appropriate axis labels.
     """
     vals = np.logspace(min_, max_, num=trial_num)  # regularizer strengths to try
-    for val in vals:
-        print(20 * "_")
-        print("Trying regularizer strength: 10^", round(np.log10(val), 3))
-        solution = sample_network.solve(element_data, solver="ecos", regularization_strength=val)
+    for val in tqdm.tqdm(vals, total=len(vals)):
+        _ = sample_network.solve(element_data, solver="ecos", regularization_strength=val)
         roughness = sample_network.get_roughness()
         misfit = sample_network.get_misfit()
-        print("Roughness:", np.round(roughness, 4))
-        print("Data misfit:", np.round(misfit, 4))
         plt.scatter(roughness, misfit, c="grey")
         plt.text(roughness, misfit, str(round(np.log10(val), 3)))
     plt.xlabel("Roughness")
@@ -1082,21 +1079,21 @@ def process_data(
         if element not in obs_data.columns:
             continue
 
-        print(f"\n\033[94mProcessing element '{element}'...\033[39m")
+        logger.info(f"\n\033[94mProcessing element '{element}'...\033[39m")
 
         element_data = get_element_obs(element=element, obs_data=obs_data)
         try:
-            predictions, _ = problem.solve(
-                element_data, solver="ecos", regularization_strength=1e-3
-            )
+            solution = problem.solve(element_data, solver="ecos", regularization_strength=1e-3)
         except cp.error.SolverError as err:
-            print(f"\033[91mSolver Error - skipping this element!\n{err}")
+            logger.error(f"\033[91mSolver Error - skipping this element!\n{err}")
             continue
 
         if results is None:
             results = pd.DataFrame(element_data.keys())
         results[element + "_obs"] = [element_data[sample] for sample in element_data]
-        results[element + "_dwnst_prd"] = [predictions[sample] for sample in element_data]
+        results[element + "_dwnst_prd"] = [
+            solution.downstream_preds[sample] for sample in element_data
+        ]
 
     assert results is not None
     return results

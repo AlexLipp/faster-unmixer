@@ -11,6 +11,8 @@ The script also calculates unique upstream areas for each basin in the network a
 Finally, it visualizes the predicted downstream concentrations and the upstream concentration map for the specified element (default: Mg).
 """
 
+import logging
+
 # pyre-fixme[21]: Could not find module `matplotlib.pyplot`.
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -18,6 +20,8 @@ import pandas as pd
 # Import sample network unmixer module.
 # This module contains the SampleNetworkUnmixer class, which builds the optimization problem and solves it.
 import funmixer
+
+logging.getLogger().addHandler(logging.StreamHandler())
 
 
 def main() -> None:

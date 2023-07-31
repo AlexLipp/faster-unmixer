@@ -1,4 +1,4 @@
-from .sample_network_unmix import (
+from .network_unmixer import (
     ElementData,
     get_element_obs,
     get_sample_graphs,
