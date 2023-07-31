@@ -85,4 +85,13 @@ setuptools.setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
     ],
+    install_requires = [
+        "cvxpy",
+        "gdal",
+        "matplotlib",
+        "networkx",
+        "numpy",
+        "pandas",
+        "pybind11",
+    ]
 )
