@@ -52,6 +52,17 @@ SOLVERS: Dict[str, Any] = {
 }
 
 
+@dataclass
+class FunmixerSolution:
+    objective_value: float
+    solver_name: str
+    total_time: float
+    solve_time: Optional[float]
+    setup_time: Optional[float]
+    downstream_preds: ElementData
+    upstream_preds: Union[ElementData, npt.NDArray[np.float_]]
+
+
 def geo_mean(x: List[float]) -> float:
     """
     Returns the geometric mean of a list of numbers.
@@ -442,7 +453,7 @@ class SampleNetworkUnmixer:
         export_rates: Optional[ExportRateData] = None,
         regularization_strength: Optional[float] = None,
         solver: str = "gurobi",
-    ) -> Union[Tuple[ElementData, ElementData], Tuple[ElementData, npt.NDArray[np.float_]]]:
+    ) -> FunmixerSolution:
         """
         Solves the optimization problem.
 
@@ -498,12 +509,6 @@ class SampleNetworkUnmixer:
         )
         end_solve_time = time.time()
 
-        print(f"Objective value = {objective_value}")
-        print(f"Total time = {end_solve_time - start_solve_time}")
-        print(f"Solver name = {problem.solver_stats.solver_name}")
-        print(f"Solve time = {problem.solver_stats.solve_time}")
-        print(f"Setup time = {problem.solver_stats.setup_time}")
-
         # Return outputs
         obs_mean: float = geo_mean(list(observation_data.values()))
 
@@ -519,11 +524,23 @@ class SampleNetworkUnmixer:
             upstream_preds = self.get_upstream_prediction_dictionary()
             upstream_preds = {sample: value * obs_mean for sample, value in upstream_preds.items()}
 
-        # pyre-fixme[7]: Expected `Union[Tuple[Dict[str, float], Dict[str, float]],
-        #  Tuple[Dict[str, float], ndarray[typing.Any, typing.Any]]]` but got
-        #  `Tuple[Dict[str, float], Union[Dict[str, float], ndarray[typing.Any,
-        #  dtype[typing.Any]]]]`.
-        return downstream_preds, upstream_preds
+        print(f"Objective value = {objective_value}")
+
+        print(f"Objective value = {objective_value}")
+        print(f"Total time = {end_solve_time - start_solve_time}")
+        print(f"Solver name = {problem.solver_stats.solver_name}")
+        print(f"Solve time = {problem.solver_stats.solve_time}")
+        print(f"Setup time = {problem.solver_stats.setup_time}")
+
+        return FunmixerSolution(
+            objective_value=float(objective_value),
+            solver_name=problem.solver_stats.solver_name,
+            setup_time=problem.solver_stats.setup_time,
+            solve_time=problem.solver_stats.solve_time,
+            total_time=end_solve_time - start_solve_time,
+            upstream_preds=upstream_preds,
+            downstream_preds=downstream_preds,
+        )
 
     def solve_montecarlo(
         self,
@@ -585,19 +602,19 @@ class SampleNetworkUnmixer:
                 sample: value * np.random.normal(loc=1, scale=relative_error / 100)
                 for sample, value in observation_data.items()
             }
-            element_pred_down, element_pred_upstream = self.solve(
+            solution = self.solve(
                 observation_data=observation_data_resampled,
                 solver=solver,
                 regularization_strength=regularization_strength,
             )  # Solve problem
-            for sample_name in element_pred_down:
-                predictions_down_mc[sample_name] += [element_pred_down[sample_name]]
+            for sample_name, v in solution.downstream_preds.items():
+                predictions_down_mc[sample_name].append(v)
 
             if self.continuous:
-                predictions_up_mc += [element_pred_upstream]
+                predictions_up_mc += [solution.upstream_preds]
             else:
-                for sample_name in element_pred_down:
-                    predictions_up_mc[sample_name] += [element_pred_upstream[sample_name]]
+                for sample_name, v in solution.upstream_preds.items():
+                    predictions_up_mc[sample_name].append(v)
 
         return predictions_down_mc, predictions_up_mc
 
@@ -962,7 +979,7 @@ def plot_sweep_of_regularizer_strength(
     for val in vals:
         print(20 * "_")
         print("Trying regularizer strength: 10^", round(np.log10(val), 3))
-        _, _ = sample_network.solve(element_data, solver="ecos", regularization_strength=val)
+        solution = sample_network.solve(element_data, solver="ecos", regularization_strength=val)
         roughness = sample_network.get_roughness()
         misfit = sample_network.get_misfit()
         print("Roughness:", np.round(roughness, 4))

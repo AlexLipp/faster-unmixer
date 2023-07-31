@@ -51,9 +51,7 @@ def main() -> None:
     )
 
     print("Solving problem...")
-    element_pred_down, element_pred_upstream = problem.solve(
-        element_data, solver="ecos", regularization_strength=10 ** (-3)
-    )
+    solution = problem.solve(element_data, solver="ecos", regularization_strength=10 ** (-3))
 
     area_dict = funmixer.get_unique_upstream_areas(sample_network)  # Extract areas for each basin
     upstream_map = funmixer.get_upstream_concentration_map(
@@ -61,12 +59,12 @@ def main() -> None:
         # pyre-fixme[6]: For 2nd argument expected `Dict[str, ndarray[typing.Any,
         #  dtype[typing.Any]]]` but got `Union[ndarray[typing.Any, dtype[typing.Any]],
         #  Dict[str, float]]`.
-        element_pred_upstream,
+        solution.upstream_preds,
     )  # Assign to upstream preds
 
     # Visualise outputs downstream
     funmixer.visualise_downstream(
-        pred_dict=element_pred_down, obs_dict=element_data, element=element
+        pred_dict=solution.downstream_preds, obs_dict=element_data, element=element
     )
     plt.show()
     # Visualise outputs upstream

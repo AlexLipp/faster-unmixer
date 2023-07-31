@@ -52,16 +52,18 @@ def main() -> None:
         f"Chose regularization strength of {regularizer_strength} at 'elbow' of misfit-roughness curve."
     )
     print("Solving problem...")
-    down_dict, upstream_map = problem.solve(
+    solution = problem.solve(
         element_data, regularization_strength=regularizer_strength, solver="ecos"
     )
 
     print("Visualising output...")
-    plt.imshow(upstream_map)
+    plt.imshow(solution.upstream_preds)
     plt.colorbar()
     plt.show()
 
-    funmixer.visualise_downstream(pred_dict=down_dict, obs_dict=element_data, element=element)
+    funmixer.visualise_downstream(
+        pred_dict=solution.downstream_preds, obs_dict=element_data, element=element
+    )
     plt.show()
 
 
