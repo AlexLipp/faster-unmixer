@@ -1,5 +1,6 @@
 from .network_unmixer import (
     ElementData,
+    ELEMENT_LIST,
     get_element_obs,
     get_sample_graphs,
     get_unique_upstream_areas,
@@ -14,6 +15,7 @@ from .network_unmixer import (
 
 __all__ = [
     "ElementData",
+    "ELEMENT_LIST",
     "get_element_obs",
     "get_sample_graphs",
     "get_unique_upstream_areas",
