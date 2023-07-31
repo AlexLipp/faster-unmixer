@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import tempfile
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, Final, Iterator, List, Optional, Tuple, Union, DefaultDict
@@ -371,7 +372,6 @@ class SampleNetworkUnmixer:
         constraints = self._constraints
 
         # Create and solve the problem
-        print("Compiling problem...")
         self._problem = cp.Problem(cp.Minimize(objective), constraints)
         # pyre-fixme[28]: Unexpected keyword argument `dpp`.
         assert self._problem.is_dcp(dpp=True)
@@ -487,6 +487,8 @@ class SampleNetworkUnmixer:
             )
 
         assert (problem := self._problem) is not None
+        print("Solving problem...")
+        start_solve_time = time.time()
         objective_value = problem.solve(**SOLVERS[solver])
         print(
             "{color}Status = {status}\033[39m".format(
@@ -494,8 +496,13 @@ class SampleNetworkUnmixer:
                 status=problem.status,
             )
         )
+        end_solve_time = time.time()
 
         print(f"Objective value = {objective_value}")
+        print(f"Total time = {end_solve_time - start_solve_time}")
+        print(f"Solver name = {problem.solver_stats.solver_name}")
+        print(f"Solve time = {problem.solver_stats.solve_time}")
+        print(f"Setup time = {problem.solver_stats.setup_time}")
 
         # Return outputs
         obs_mean: float = geo_mean(list(observation_data.values()))
