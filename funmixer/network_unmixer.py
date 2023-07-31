@@ -43,20 +43,20 @@ class SampleNode:
     total_upstream_area: int
     # Properties added dynamically by Python
     label: int
-    my_export_rate: cp.Parameter = field(default_factory=lambda: cp.Parameter(pos=True))
-    my_flux: float  # TODO: cp.Expression?
+    my_flux: Optional[float] = None  # TODO: cp.Expression?
     # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_total_flux: Any
+    my_total_flux: Optional[Any] = None
     # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_total_tracer_flux: Any
+    my_total_tracer_flux: Optional[Any] = None
     # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_tracer_flux: Any
+    my_tracer_flux: Optional[Any] = None
     # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_tracer_value: Any
+    my_tracer_value: Optional[Any] = None
     # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_value: Any  # TODO: cp.Variable
+    my_value: Optional[Any] = None  # TODO: cp.Variable
     rltv_area: Optional[float] = None
     total_flux: Optional[cp.Expression] = None
+    my_export_rate: cp.Parameter = field(default_factory=lambda: cp.Parameter(pos=True))
 
     @classmethod
     def from_native(cls, n: fn.NativeSampleNode) -> "SampleNode":
@@ -70,6 +70,13 @@ class SampleNode:
             total_upstream_area=n.total_upstream_area,
             label=n.label,
         )
+
+
+def native_sample_graph_to_python(g: Dict[str, fn.NativeSampleNode]) -> Dict[str, SampleNode]:
+    newg: Dict[str, SampleNode] = {}
+    for k, v in g.items():
+        newg[k] = SampleNode.from_native(v)
+    return newg
 
 
 # Solvers that can handle this problem type include:
@@ -125,7 +132,7 @@ def geo_mean(x: List[float]) -> float:
 
 def nx_topological_sort_with_data(
     G: nx.DiGraph,
-) -> Iterator[Tuple[str, fn.SampleNode]]:
+) -> Iterator[Tuple[str, SampleNode]]:
     """
     Returns a topological sort of the graph, with the data of each node.
 
@@ -218,7 +225,10 @@ def get_sample_graphs(
          between each node's subbasin.
 
     """
-    sample_network_raw, sample_adjacency = fn.fastunmix(flowdirs_filename, sample_data_filename)
+    sample_network_native_raw, sample_adjacency = fn.fastunmix(
+        flowdirs_filename, sample_data_filename
+    )
+    sample_network_raw = native_sample_graph_to_python(sample_network_native_raw)
 
     # Convert it into a networkx graph for easy use in Python
     sample_network = nx.DiGraph()

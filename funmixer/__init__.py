@@ -11,6 +11,7 @@ from .network_unmixer import (
     plot_sweep_of_regularizer_strength,
     SampleNetworkUnmixer,
     visualise_downstream,
+    SampleNode,
 )
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "mix_downstream",
     "nx_get_downstream",
     "plot_network",
+    "SampleNode",
     "plot_sweep_of_regularizer_strength",
     "SampleNetworkUnmixer",
     "visualise_downstream",

@@ -35,10 +35,10 @@ struct SampleData {
   double y = std::numeric_limits<double>::quiet_NaN();
 };
 
-// Each SampleNode correspond to a sample, specified by a name and (x,y)
+// Each NativeSampleNode correspond to a sample, specified by a name and (x,y)
 // location, as well as a portion of the watershed. This portion of the
 // watershed flows into a downstream node and receives flow from upstream nodes
-struct SampleNode {
+struct NativeSampleNode {
   using name_t = std::string;
   // Sample data
   SampleData data;
@@ -52,17 +52,17 @@ struct SampleNode {
   int64_t total_upstream_area = 0;
 
   // Makes a root node
-  static SampleNode make_root_node() {
-    SampleNode temp;
+  static NativeSampleNode make_root_node() {
+    NativeSampleNode temp;
     temp.data.name = root_node_name;
     return temp;
   }
 
-  static SampleNode make_w_downstream_and_sample(
+  static NativeSampleNode make_w_downstream_and_sample(
     const size_t &downstream_node,
     const SampleData &sample_data
   ){
-    SampleNode temp;
+    NativeSampleNode temp;
     temp.downstream_node = downstream_node;
     temp.data = sample_data;
     return temp;
@@ -97,7 +97,7 @@ std::vector<detail::SampleData> get_sample_data(const std::string &sample_filena
   return sample_data;
 }
 
-void calculate_total_upstream_areas(std::vector<detail::SampleNode> &sample_graph){
+void calculate_total_upstream_areas(std::vector<detail::NativeSampleNode> &sample_graph){
   // Count how many upstream neighbours we're waiting on
   std::vector<size_t> deps(sample_graph.size());
   for(size_t i = 0; i < sample_graph.size(); i++){
@@ -137,7 +137,7 @@ void calculate_total_upstream_areas(std::vector<detail::SampleNode> &sample_grap
   }
 }
 
-std::pair<std::vector<detail::SampleNode>, detail::NeighborsToBorderLength> faster_unmixer_internal(const std::string& flowdirs_filename, const std::string& sample_filename){
+std::pair<std::vector<detail::NativeSampleNode>, detail::NeighborsToBorderLength> faster_unmixer_internal(const std::string& flowdirs_filename, const std::string& sample_filename){
   // Load data
   rd::Array2D<rd::d8_flowdir_t> arc_flowdirs(flowdirs_filename);
 
@@ -151,7 +151,7 @@ std::pair<std::vector<detail::SampleNode>, detail::NeighborsToBorderLength> fast
     // if x,y is on the boundary and the node is not a sink raise an exception:
     if(
       (x==0 || y==0 || x==flowdirs.width()-1 || y==flowdirs.height()-1) &&
-      flowdirs(x,y)!=NO_FLOW
+      flowdirs(x,y)!=rd::NO_FLOW
     ){
       throw std::runtime_error("Boundary condition violated at (" + std::to_string(x) + ", " + std::to_string(y) + ")! Expected a sink node, but got a flow direction!");
     }
@@ -176,7 +176,7 @@ std::pair<std::vector<detail::SampleNode>, detail::NeighborsToBorderLength> fast
   }
 
   // Graph of how the samples are connected together.
-  std::vector<detail::SampleNode> sample_parent_graph;
+  std::vector<detail::NativeSampleNode> sample_parent_graph;
 
   // Identify cells which do not flow to anywhere. These are the start of our
   // region-identifying procedure
@@ -191,7 +191,7 @@ std::pair<std::vector<detail::SampleNode>, detail::NeighborsToBorderLength> fast
   constexpr auto NO_LABEL = 0;
   auto sample_label = rd::Array2D<uint32_t>::make_from_template(flowdirs, NO_LABEL);
   sample_label.setNoData(NO_LABEL);
-  sample_parent_graph.push_back(detail::SampleNode::make_root_node());
+  sample_parent_graph.push_back(detail::NativeSampleNode::make_root_node());
 
   // Iterate in a wave from all the flow endpoints to the headwaters, labeling
   // cells as we go.
@@ -209,7 +209,7 @@ std::pair<std::vector<detail::SampleNode>, detail::NeighborsToBorderLength> fast
       auto& parent = sample_parent_graph.at(my_current_label);
       parent.upstream_nodes.push_back(data.name);
       sample_parent_graph.push_back(
-        detail::SampleNode::make_w_downstream_and_sample(my_current_label, data)
+        detail::NativeSampleNode::make_w_downstream_and_sample(my_current_label, data)
       );
       // Update the sample's label
       sample_label(c.x,c.y) = my_new_label;
@@ -307,7 +307,7 @@ std::pair<SampleGraph, NeighborsToBorderLength> faster_unmixer(const std::string
   for(size_t i = 0; i < sample_parent_graph.size(); i++){
     const auto node = sample_parent_graph.at(i);
     const std::string downstream_node_name = (node.downstream_node == NO_DOWNSTREAM_NEIGHBOUR) ? root_node_name : sample_parent_graph.at(node.downstream_node).data.name;
-    nodes[node.data.name] = SampleNode{
+    nodes[node.data.name] = NativeSampleNode{
       .name = node.data.name,
       .x = node.data.x,
       .y = node.data.y,

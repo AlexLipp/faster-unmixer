@@ -87,7 +87,7 @@ setuptools.setup(
     ],
     install_requires=[
         "cvxpy",
-        "gdal",
+        # "gdal",
         "matplotlib",
         "networkx",
         "numpy",
