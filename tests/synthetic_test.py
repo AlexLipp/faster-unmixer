@@ -56,6 +56,8 @@ def main() -> None:
     # Extract arrays of predicted and `observed' concentrations
     down_preds = [solution.downstream_preds[sample] for sample in solution.downstream_preds.keys()]
     down_obs = [mixed_synth_down[sample] for sample in solution.downstream_preds.keys()]
+    # pyre-fixme[16]: Item `ndarray` of `Union[Dict[str, float], ndarray[typing.Any,
+    #  np.dtype[typing.Any]]]` has no attribute `keys`.
     up_preds = [solution.upstream_preds[sample] for sample in solution.upstream_preds.keys()]
     up_obs = [synth_upst_concs[sample] for sample in solution.downstream_preds.keys()]
 

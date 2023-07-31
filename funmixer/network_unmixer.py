@@ -5,7 +5,7 @@ import tempfile
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, Final, Iterator, List, Optional, Tuple, Union, DefaultDict
+from typing import Any, Dict, Final, Iterator, List, Optional, Tuple, TypeVar, Union, DefaultDict
 
 # TODO(rbarnes): Make a requirements file for conda
 import cvxpy as cp
@@ -31,6 +31,13 @@ ELEMENT_LIST: Final[List[str]] = ["H", "He", "Li", "Be", "B", "C", "N", "O", "F"
 ElementData = Dict[str, float]
 ExportRateData = Dict[str, float]
 
+T = TypeVar("T")
+
+
+def not_none(x: Optional[T]) -> T:
+    assert x is not None
+    return x
+
 
 @dataclass
 class SampleNode:
@@ -43,17 +50,11 @@ class SampleNode:
     total_upstream_area: int
     # Properties added dynamically by Python
     label: int
-    my_flux: Optional[float] = None  # TODO: cp.Expression?
-    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_total_flux: Optional[Any] = None
-    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_total_tracer_flux: Optional[Any] = None
-    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_tracer_flux: Optional[Any] = None
-    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_tracer_value: Optional[Any] = None
-    # pyre-fixme[4]: Attribute annotation cannot be `Any`.
-    my_value: Optional[Any] = None  # TODO: cp.Variable
+    my_flux: Optional[Union[float, cp.Expression]] = None
+    my_total_flux: Optional[cp.Expression] = None
+    my_total_tracer_flux: Optional[cp.Expression] = None
+    my_tracer_flux: Optional[cp.Expression] = None
+    my_tracer_value: Optional[cp.Expression] = None
     rltv_area: Optional[float] = None
     total_flux: Optional[cp.Expression] = None
     my_export_rate: cp.Parameter = field(default_factory=lambda: cp.Parameter(pos=True))
@@ -101,7 +102,7 @@ SOLVERS: Dict[str, Any] = {
     "gurobi": {"solver": cp.GUROBI, "verbose": False, "NumericFocus": 3},
 }
 
-logger = logging.getLogger()
+logger: logging.Logger = logging.getLogger()
 
 
 @dataclass
@@ -167,26 +168,6 @@ def nx_get_downstream(G: nx.DiGraph, x: str) -> Optional[str]:
         return s[0]
     else:
         raise Exception("More than one downstream neighbour!")
-
-
-def calculate_normalised_areas(sample_network: nx.DiGraph) -> None:
-    """
-    Adds a new attribute `rltv_area` to each node, representing the upstream area of the node divided by the mean upstream area
-    of all nodes in the network.
-
-    Args:
-        sample_network (nx.DiGraph): The sample network graph.
-
-    Note:
-        The method calculates the mean upstream area of all nodes in the network and assigns a normalized relative area (`rltv_area`)
-        to each node in the graph based on its individual upstream area divided by the mean area. This step improves numerical accuracy
-        and does not affect the results as all values are divided by a constant.
-    """
-    areas = [node["data"].area for node in sample_network.nodes.values()]
-    mean_area = np.mean(areas)
-
-    for node in sample_network.nodes.values():
-        node["data"].rltv_area = node["data"].area / mean_area
 
 
 def plot_network(G: nx.DiGraph) -> None:
@@ -315,16 +296,35 @@ class SampleNetworkUnmixer:
                 self._build_regularizer_terms_discrete()
         self._build_problem()
 
+    def _calculate_normalised_areas(self, sample_network: nx.DiGraph) -> None:
+        """
+        Adds a new attribute `rltv_area` to each node, representing the upstream area of the node divided by the mean upstream area
+        of all nodes in the network.
+
+        Args:
+            sample_network (nx.DiGraph): The sample network graph.
+
+        Note:
+            The method calculates the mean upstream area of all nodes in the network and assigns a normalized relative area (`rltv_area`)
+            to each node in the graph based on its individual upstream area divided by the mean area. This step improves numerical accuracy
+            and does not affect the results as all values are divided by a constant.
+        """
+        areas = [node["data"].area for node in sample_network.nodes.values()]
+        mean_area = np.mean(areas)
+
+        for node in sample_network.nodes.values():
+            node["data"].rltv_area = node["data"].area / mean_area
+
     def _build_primary_terms(self) -> None:
-        for _, data in self.sample_network.nodes(data=True):
-            data["data"].my_total_tracer_flux = 0.0
-            data["data"].my_total_flux = 0.0
         """
         Build the primary terms for the objective function.
         """
+        for _, data in self.sample_network.nodes(data=True):
+            data["data"].my_total_flux = 0.0
+            data["data"].my_total_tracer_flux = 0.0
 
         # Normalises node area by total mean to improve numerical accuracy
-        calculate_normalised_areas(sample_network=self.sample_network)
+        self._calculate_normalised_areas(sample_network=self.sample_network)
 
         # Build the main objective
         # Use a topological sort to ensure an upstream-to-downstream traversal
@@ -333,9 +333,8 @@ class SampleNetworkUnmixer:
             if self.continuous:
                 concs = [node.concentration for node in self.grid.sites_to_nodes[sample_name]]
 
-                my_data.my_tracer_value = cp.sum(concs) / len(
-                    concs
-                )  # mean conc of all inversion nodes upstream
+                # mean conc of all inversion nodes upstream
+                my_data.my_tracer_value = cp.sum(concs) / len(concs)
             else:
                 my_data.my_tracer_value = cp.Variable(pos=True)
 
@@ -345,8 +344,11 @@ class SampleNetworkUnmixer:
             self._site_to_export_rate[my_data.name] = my_data.my_export_rate
 
             # Area weighted total contribution of material from this node
-            my_data.my_flux = my_data.rltv_area * my_data.my_export_rate
+            my_data.my_flux = my_data.my_export_rate * not_none(my_data.rltv_area)
+            assert isinstance(my_data.my_flux, cp.Expression)
+
             # Add the flux I generate to the total flux passing through me
+            assert my_data.my_total_flux is not None
             my_data.my_total_flux += my_data.my_flux
             # Set up a ReciprocalParameter for total flux to make problem DPP.
             # Value of this parameter is set at solve time as it
@@ -357,16 +359,18 @@ class SampleNetworkUnmixer:
             # Area weighted contribution of *tracer* from this node
             my_data.my_tracer_flux = my_data.my_flux * my_data.my_tracer_value
             # Add the *tracer* flux I generate to the total flux of *tracer* passing through me
+            assert my_data.my_total_tracer_flux is not None
             my_data.my_total_tracer_flux += my_data.my_tracer_flux
 
             # Set up a dummy (parameter free) variable that encodes the total *tracer* flux at the node.
             # This ensures that the problem is DPP.
             total_tracer_flux_dummy = cp.Variable(pos=True)
             # We add a constraint that this must equal the parameter encoded `total_tracer_flux`
+            assert my_data.my_total_tracer_flux is not None
             self._constraints.append(total_tracer_flux_dummy == my_data.my_total_tracer_flux)
 
             # Set up a dummy (parameter free) variable for normalised concentration.
-            # This ensures that the problem is DPP.
+            # `.rp` ensures that the problem is DPP.
             normalised_concentration = total_tracer_flux_dummy * total_flux_dummy.rp
             normalised_concentration_dummy = cp.Variable(pos=True)
             # We add a constraint that this must equal the parameter encoded `normalised_concentration`
@@ -665,6 +669,9 @@ class SampleNetworkUnmixer:
             if self.continuous:
                 predictions_up_mc += [solution.upstream_preds]
             else:
+                # pyre-fixme[16]: Item `ndarray` of `Union[Dict[str, float],
+                #  ndarray[typing.Any, np.dtype[typing.Any]]]` has no attribute
+                #  `items`.
                 for sample_name, v in solution.upstream_preds.items():
                     predictions_up_mc[sample_name].append(v)
 
@@ -942,24 +949,34 @@ def mix_downstream(
         # If provided, set export rates from user input
         # else default to equal rate (absolute value is arbitrary)
 
-        export_rate = export_rates[sample_name] if export_rates else 1
+        export_rate = export_rates[sample_name] if export_rates else 1.0
         # TODO: Remove this once we default construction set up for the class
         my_data.my_export_rate = cp.Parameter(pos=True)
         my_data.my_export_rate.value = export_rate
 
+        # pyre-fixme[8]: Attribute has type `Optional[Expression]`; used as
+        #  `floating[typing.Any]`.
         my_data.my_tracer_value = np.mean(concentration_map[areas[sample_name]])
         # area weighted total contribution of material from this node
         my_data.my_flux = my_data.area * export_rate
+        assert isinstance(my_data.my_flux, float)
+
         # Add the flux I generate to the total flux passing through me
+        # pyre-fixme[16]: `Optional` has no attribute `__iadd__`.
         my_data.my_total_flux += my_data.my_flux
 
         # area weighted contribution of *tracer* from this node
+        # pyre-fixme[58]: `*` is not supported for operand types `Union[None,
+        #  cp.expressions.expression.Expression, float]` and
+        #  `Optional[cp.expressions.expression.Expression]`.
         my_data.my_tracer_flux = my_data.my_flux * my_data.my_tracer_value
         # Add the *tracer* flux I generate to the total flux of *tracer* passing through me
         my_data.my_total_tracer_flux += my_data.my_tracer_flux
 
         normalised = my_data.my_total_tracer_flux / my_data.my_total_flux
         mixed_downstream_pred[sample_name] = normalised
+        # pyre-fixme[6]: For 2nd argument expected `float` but got
+        #  `Optional[Expression]`.
         mixed_upstream_pred[sample_name] = my_data.my_tracer_value
         if ds := nx_get_downstream(sample_network, sample_name):
             downstream_data = sample_network.nodes[ds]["data"]
