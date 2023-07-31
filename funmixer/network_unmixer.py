@@ -653,7 +653,7 @@ class SampleNetworkUnmixer:
         else:
             predictions_up_mc = defaultdict(list)
 
-        for _ in range(num_repeats):
+        for _ in tqdm.tqdm(range(num_repeats), total=num_repeats):
             observation_data_resampled = {
                 sample: value * np.random.normal(loc=1, scale=relative_error / 100)
                 for sample, value in observation_data.items()
