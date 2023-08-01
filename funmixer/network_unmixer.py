@@ -385,7 +385,7 @@ class SampleNetworkUnmixer:
             misfit = cp_log_ratio(normalised_concentration_dummy, observed)
             self._primary_terms.append(misfit)
 
-            if ds := nx_get_downstream(self.sample_network, sample_name):
+            if (ds := nx_get_downstream(self.sample_network, sample_name)) is not None:
                 downstream_data = self.sample_network.nodes[ds]["data"]
                 # Add our flux to downstream node's
                 downstream_data.my_total_flux += my_data.my_total_flux
