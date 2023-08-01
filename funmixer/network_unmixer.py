@@ -44,9 +44,9 @@ class SampleNode:
     name: str
     x: int
     y: int
-    downstream_node: str
+    downstream_node: Optional[str]
     upstream_nodes: List[str]
-    area: int
+    area: float
     total_upstream_area: int
     # Properties added dynamically by Python
     label: int
