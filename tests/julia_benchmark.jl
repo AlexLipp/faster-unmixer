@@ -2,10 +2,10 @@ using Gurobi
 using Convex
 using Random
 
+# Set problem parameters
 MINIMUM_CONC = 1.
 MAXIMUM_CONC = 1e2
 
-# Set the range to explore sub-basin area values over
 MINIMUM_AREA = 1.
 MAXIMUM_AREA = 1e2
 
