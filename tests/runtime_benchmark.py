@@ -222,6 +222,7 @@ def plot_benchmark() -> None:
     plt.grid(True, which="both")
     plt.tight_layout()
     plt.savefig("runtime_benchmark.png", dpi=400, bbox_inches="tight")
+    plt.savefig("runtime_benchmark.pdf", bbox_inches="tight")
     plt.show()
 
 
