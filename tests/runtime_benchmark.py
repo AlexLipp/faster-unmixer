@@ -41,7 +41,7 @@ MAXIMUM_NETWORK_SIZE = 500
 NUMBER_OF_NETWORKS = 50
 
 # Number of times to run the test to average run-time variations
-TEST_REPEATS = 5
+TEST_REPEATS = 10
 
 
 @dataclass
@@ -188,6 +188,7 @@ def do_benchmark() -> None:
 def plot_benchmark() -> None:
     with open("benchmark_results.pkl", "rb") as fin:
         network_sizes, ecos_bench, gurobi_bench, scs_bench = pickle.load(fin)
+    breakpoint()
 
     # Plot results of total runtime
     # Plot solve time against number of nodes
