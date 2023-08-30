@@ -77,7 +77,8 @@ def plot_first_second(
         yerr=bstd(b.first_solves, scale=scale),
         label=f"{name} Total Time (1$^{{st}}$ solve)",
         c=c1,
-        markersize=4,
+        markersize=2,
+        alpha=0.7,
     )
     plt.errorbar(
         network_sizes,
@@ -86,7 +87,8 @@ def plot_first_second(
         c=c2,
         label=f"{name} Total Time (2$^{{nd}}$ solve)",
         fmt=symbol,
-        markersize=4,
+        markersize=2,
+        alpha=0.7,
     )
 
 
@@ -103,7 +105,7 @@ def plot_solver_time(
         bavg(b.solver_times, scale=scale),
         yerr=bstd(b.solver_times, scale=scale),
         c=c,
-        markersize=4,
+        markersize=2,
         fmt=symbol,
         label=f"{name}",
     )
@@ -189,21 +191,19 @@ def plot_benchmark() -> None:
 
     # Plot results of total runtime
     # Plot solve time against number of nodes
-    plt.figure(figsize=(10, 5))
+    fig = plt.figure(figsize=(10, 5))
+    ax = fig.add_subplot(111)
 
-    # plt.subplot(2, 1, 1)
     plot_first_second(network_sizes, ecos_bench, "ECOS", "#1f78b4", "#a6cee3")
-    plot_first_second(network_sizes, scs_bench, "SCS", "#e31a1c", "#fb9a99")
+    plot_first_second(network_sizes, scs_bench, "SCS", "#e31a1c", "#fb9a99", scale=1e-3)
     if gurobi_bench:
         plot_first_second(network_sizes, gurobi_bench, "GUROBI", "#33a02c", "#b2df8a")
 
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.title("Total runtime")
-    plt.ylabel("Solve time (s)")
-    plt.legend()
-    plt.grid(True, which="both")
-    # plt.subplot(2, 1, 2)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_title("Total runtime")
+    ax.set_ylabel("Solve time (s)")
+    ax.grid(True, which="both")
 
     # Plot results of just the CVXPY solve time
     plot_solver_time(network_sizes, ecos_bench, "ECOS Solver Time", "#1f78b4", symbol="o--")
@@ -213,16 +213,18 @@ def plot_benchmark() -> None:
     if gurobi_bench:
         plot_solver_time(network_sizes, gurobi_bench, "GUROBI Solver Time", "#33a02c", symbol="o--")
 
-    plt.xscale("log")
-    plt.title("Optimizer time")
-    plt.yscale("log")
-    plt.xlabel("Number of nodes")
-    plt.ylabel("Solve time (s)")
-    plt.legend()
-    plt.grid(True, which="both")
-    plt.tight_layout()
-    plt.savefig("runtime_benchmark.png", dpi=400, bbox_inches="tight")
-    plt.savefig("runtime_benchmark.pdf", bbox_inches="tight")
+    ax.set_xscale("log")
+    ax.set_title("Optimizer time")
+    ax.set_yscale("log")
+    ax.set_xlabel("Number of nodes")
+    ax.set_ylabel("Solve time (s)")
+    ax.legend()
+    ax.grid(True, which="both")
+    handles, labels = ax.get_legend_handles_labels()
+    labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
+    lgd = ax.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3)
+    plt.savefig("runtime_benchmark.png", dpi=400, bbox_extra_artists=(lgd,), bbox_inches="tight")
+    plt.savefig("runtime_benchmark.pdf", bbox_extra_artists=(lgd,), bbox_inches="tight")
     plt.show()
 
 
