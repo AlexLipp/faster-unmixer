@@ -207,7 +207,7 @@ def plot_benchmark() -> None:
     plot_first_second(network_sizes, scs_bench, "SCS", "#e31a1c", "#fb9a99", scale=1e-3)
     if gurobi_bench:
         plot_first_second(network_sizes, gurobi_bench, "GUROBI", "#33a02c", "#b2df8a")
-    plot_first_second(network_sizes, clarabel_bench, "CLARABEL", "#ff7f00", "#fdbf6f", scale=1e-3)
+    plot_first_second(network_sizes, clarabel_bench, "CLARABEL", "#ff7f00", "#fdbf6f")
 
     ax.set_xscale("log")
     ax.set_yscale("log")
@@ -222,9 +222,7 @@ def plot_benchmark() -> None:
     )
     if gurobi_bench:
         plot_solver_time(network_sizes, gurobi_bench, "GUROBI Solver Time", "#33a02c", symbol="o--")
-    plot_solver_time(
-        network_sizes, clarabel_bench, "CLARABEL Solver Time", "#ff7f00", scale=1e-3, symbol="o--"
-    )
+    plot_solver_time(network_sizes, clarabel_bench, "CLARABEL Solver Time", "#ff7f00", symbol="o--")
     ax.set_xscale("log")
     ax.set_title("Optimizer time")
     ax.set_yscale("log")
