@@ -136,6 +136,7 @@ SOLVERS: Dict[str, Any] = {
     },
     "scs": {"solver": cp.SCS, "verbose": False, "max_iters": 10000},
     "gurobi": {"solver": cp.GUROBI, "verbose": False, "NumericFocus": 3},
+    "clarabel": {"solver": cp.CLARABEL, "verbose": False},
 }
 
 logger: logging.Logger = logging.getLogger()
