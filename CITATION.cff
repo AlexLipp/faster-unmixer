@@ -1,30 +1,58 @@
 # This CITATION.cff file was generated with cffinit.
 # Visit https://bit.ly/cffinit to generate yours today!
 
-cff-version: 1.2.0
-title: >-
-  Identifying tracer and pollutant sources in drainage
-  networks from point observations using an efficient convex
-  unmixing scheme
+cff-version: 1.0.0
+title: funmixer
 message: >-
   If you use this software, please cite it using the
   metadata from this file.
 type: software
 authors:
-  - given-names: Lipp
-    family-names: Alexander
-    email: alexander.lipp@merton.ox.ac.uk
-    orcid: 'https://orcid.org/0000-0003-2130-8576'   
-  - given-names: Barnes
-    family-names: Richard
+  - given-names: Richard
+    family-names: Barnes
     email: rijard.barnes@gmail.com
     orcid: 'https://orcid.org/0000-0002-0204-6040'
+  - given-names: Alexander
+    family-names: Lipp
+    email: alexander.lipp@merton.ox.ac.uk
+    orcid: 'https://orcid.org/0000-0003-2130-8576'
 identifiers:
+  - type: url
+    value: 'https://github.com/r-barnes/faster-unmixer/'
+    description: Code Repository
   - type: doi
-    value: 10.5194/egusphere-egu23-5368
-    description: EGU abstract
+    value: 10.31223/X5708M
+    description: Preprint DOI
 repository-code: 'https://github.com/r-barnes/faster-unmixer/'
 abstract: >-
-  This repository implements an efficient solution to the
-  unmixing of nested concentrations in a (river) network
-  using convex optimisation.
+  Rivers transport elements, minerals, chemicals, and
+  pollutants produced in their upstream basins. A sample
+  from a river is a mixture of all of its upstream sources,
+  making it challenging to pinpoint the contribution from
+  each individual source. Here, we show how a nested sample
+  design and convex optimization can be used to efficiently
+  unmix downstream samples of a well-mixed, conservative
+  tracer into the contributions of their upstream sources.
+  Our approach is significantly faster than previous
+  methods. We represent the river's sub-catchments, defined
+  by sampling sites, using a directed acyclic graph. This
+  graph is used to build a convex optimization problem
+  which, thanks to its convexity, can be quickly solved to
+  global optimality---in under a second on desktop hardware
+  for datasets of $\sim$100 samples or fewer. Uncertainties
+  in the upstream predictions can be generated using Monte
+  Carlo resampling. We provide an open-source implementation
+  of this approach in Python. The inputs required are
+  straightforward: a table containing sample locations and
+  observed tracer concentrations, along with a D8
+  flow-direction raster map. As a case study, we use this
+  method to map the elemental geochemistry of sediment
+  sources for rivers draining the Cairngorms mountains, UK.
+  This method could be extended to non-conservative and
+  non-steady state tracers. We also show, theoretically, how
+  multiple tracers could be simultaneously inverted to
+  recover upstream run-off or erosion rates as well as
+  source concentrations. Overall, this approach can provide
+  valuable insights to researchers in various fields,
+  including water quality, geochemical exploration,
+  geochemistry, hydrology, and wastewater epidemiology.

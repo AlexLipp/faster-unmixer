@@ -80,10 +80,16 @@ python tests/runtime_benchmark.py plot
 
 ## Usage
 
-Some documented example scripts are given in the directory `examples/`.
+Some documented example scripts are given in the directory `examples/`, and are run from the root directory of the repository, e.g.,
+
+```
+python examples/unmix_montecarlo_mwe.py
+```
 
 ## Cite 
 
-If you use this please cite: 
+If you use this please cite the preprint, which is under review at *Water Resources Research*.
 
-Lipp, A. and Barnes, R.: Identifying tracer and pollutant sources in drainage networks from point observations using an efficient convex unmixing scheme, EGU General Assembly 2023, Vienna, Austria, 24–28 Apr 2023, EGU23-5368, [DOI: 10.5194/egusphere-egu23-5368](https://doi.org/10.5194/egusphere-egu23-5368), 2023.
+> Barnes, R. and Lipp, A. _Using convex optimization to efficiently apportion tracer and pollutant sources from point concentration observations_, Preprint DOI [10.31223/X5708M](https://doi.org/10.31223/X5708M), 2023. 
+
+A `.cff` citation file is also provided in the repository.
