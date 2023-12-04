@@ -12,24 +12,39 @@ The algorithm requires:
 
 Example datasets are given in `data/d8.asc` and `sample_data.dat`.
 
-## Compiling 
+## Installation
 
 The following assumes a UNIX operating systems. If running Windows OS you will need to install a [Linux subsystem](https://learn.microsoft.com/en-us/windows/wsl/about). 
 
-Check out submodules:
+First, *clone* the repository into a local directory:
+
+```
+git clone [URL] [LOCAL_DIRECTORY]
+```
+You can find the URL by clicking the green "Code" button on the top right of this page.
+
+Navigate to the local directory and check-out the submodules:
 ```
 git submodule update --init --recursive
 ```
 
-Install the python package.
+If using conda environments, a conda environment file (`requirements.yaml`) is provided containing the python dependencies. A conda environment entitled `funmixer` can be generated from it using `conda env create -f requirements.yaml`. The environment can then be activated using `conda activate funmixer`.
+
+Next, install the python package using:
 
 ```
 pip install -e .
 ```
 
-This command installs the `funmixer` python package that can be imported as normal (e.g., `import funmixer`).
+This command installs the `funmixer` python package that can then be imported as normal (e.g., `import funmixer`).
 
-A conda environment file (`requirements.yaml`) is provided containing the python dependencies. A conda environment entitled `funmixer` can be generated from it using `conda env create -f requirements.yaml`. 
+### Problem solving
+
+If you encounter any problems with installation you can contact us or raise an issue on this repository. Based on user feedback, some common problems and solutions are given below:
+
+- If you're having problems related to permissions, try using `sudo` before the `pip` command (e.g., `sudo pip install -e .`).
+
+- Some users have reported installation problems due to missing pybind11 headers. If this is the case, try installing pybind11 directly. Instructions are available [here](https://pybind11.readthedocs.io/en/stable/installing.html).
 
 ## Testing
 
