@@ -19,7 +19,7 @@ The following assumes a UNIX operating systems. If running Windows OS you will n
 First, *clone* the repository into a local directory:
 
 ```
-git clone [URL] [LOCAL_DIRECTORY]
+git clone --recurse-submodules https://github.com/r-barnes/faster-unmixer/ [LOCAL_DIRECTORY]
 ```
 You can find the URL by clicking the green "Code" button on the top right of this page.
 
