@@ -176,8 +176,11 @@ def do_benchmark() -> None:
     print("Testing SCS solver...")
     scs_bench = run_benchmark("scs", network_sizes)
 
+    print("Testing Clarabel solver...")
+    clarabel_bench = run_benchmark("clarabel", network_sizes)
+
     with open("benchmark_results.pkl", "wb") as fout:
-        pickle.dump([network_sizes, ecos_bench, gurobi_bench, scs_bench], fout)
+        pickle.dump([network_sizes, ecos_bench, gurobi_bench, scs_bench, clarabel_bench], fout)
 
     end = time.time()
     print(f"Benchmarking took {end - start} seconds.")
@@ -187,7 +190,13 @@ def do_benchmark() -> None:
 
 def plot_benchmark() -> None:
     with open("benchmark_results.pkl", "rb") as fin:
-        network_sizes, ecos_bench, gurobi_bench, scs_bench = pickle.load(fin)
+        (
+            network_sizes,
+            ecos_bench,
+            gurobi_bench,
+            scs_bench,
+            clarabel_bench,
+        ) = pickle.load(fin)
 
     # Plot results of total runtime
     # Plot solve time against number of nodes
@@ -198,6 +207,7 @@ def plot_benchmark() -> None:
     plot_first_second(network_sizes, scs_bench, "SCS", "#e31a1c", "#fb9a99")
     if gurobi_bench:
         plot_first_second(network_sizes, gurobi_bench, "GUROBI", "#33a02c", "#b2df8a")
+    plot_first_second(network_sizes, clarabel_bench, "CLARABEL", "#ff7f00", "#fdbf6f")
 
     ax.set_xscale("log")
     ax.set_yscale("log")
@@ -210,7 +220,7 @@ def plot_benchmark() -> None:
     plot_solver_time(network_sizes, scs_bench, "SCS Solver Time", "#e31a1c", symbol="o--")
     if gurobi_bench:
         plot_solver_time(network_sizes, gurobi_bench, "GUROBI Solver Time", "#33a02c", symbol="o--")
-
+    plot_solver_time(network_sizes, clarabel_bench, "CLARABEL Solver Time", "#ff7f00", symbol="o--")
     ax.set_xscale("log")
     ax.set_title("Optimizer time")
     ax.set_yscale("log")
