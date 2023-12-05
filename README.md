@@ -21,7 +21,7 @@ First, *clone* the repository into a local directory:
 ```
 git clone --recurse-submodules https://github.com/r-barnes/faster-unmixer/ [LOCAL_DIRECTORY]
 ```
-Navigate to the local directory and check-out the submodules:
+If you've cloned without getting submodules you can acquire them by navigating to the local directory and running:
 ```
 git submodule update --init --recursive
 ```
