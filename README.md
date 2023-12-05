@@ -12,24 +12,37 @@ The algorithm requires:
 
 Example datasets are given in `data/d8.asc` and `sample_data.dat`.
 
-## Compiling 
+## Installation
 
 The following assumes a UNIX operating systems. If running Windows OS you will need to install a [Linux subsystem](https://learn.microsoft.com/en-us/windows/wsl/about). 
 
-Check out submodules:
+First, *clone* the repository into a local directory:
+
+```
+git clone --recurse-submodules https://github.com/r-barnes/faster-unmixer/ [LOCAL_DIRECTORY]
+```
+If you've cloned without getting submodules you can acquire them by navigating to the local directory and running:
 ```
 git submodule update --init --recursive
 ```
 
-Install the python package.
+If using conda environments, a conda environment file (`requirements.yaml`) is provided containing the python dependencies. A conda environment entitled `funmixer` can be generated from it using `conda env create -f requirements.yaml`. The environment can then be activated using `conda activate funmixer`.
+
+Next, install the python package using:
 
 ```
 pip install -e .
 ```
 
-This command installs the `funmixer` python package that can be imported as normal (e.g., `import funmixer`).
+This command installs the `funmixer` python package that can then be imported as normal (e.g., `import funmixer`).
 
-A conda environment file (`requirements.yaml`) is provided containing the python dependencies. A conda environment entitled `funmixer` can be generated from it using `conda env create -f requirements.yaml`. 
+### Problem solving
+
+If you encounter any problems with installation you can contact us or raise an issue on this repository. Based on user feedback, some common problems and solutions are given below:
+
+- If you're having problems related to permissions, try using `sudo` before the `pip` command (e.g., `sudo pip install -e .`).
+
+- Some users have reported installation problems due to missing pybind11 headers. If this is the case, try installing pybind11 directly. Instructions are available [here](https://pybind11.readthedocs.io/en/stable/installing.html).
 
 ## Testing
 
@@ -65,10 +78,16 @@ python tests/runtime_benchmark.py plot
 
 ## Usage
 
-Some documented example scripts are given in the directory `examples/`.
+Some documented example scripts are given in the directory `examples/`, and are run from the root directory of the repository, e.g.,
+
+```
+python examples/unmix_montecarlo_mwe.py
+```
 
 ## Cite 
 
-If you use this please cite: 
+If you use this please cite the preprint, which is under review at *Water Resources Research*.
 
-Lipp, A. and Barnes, R.: Identifying tracer and pollutant sources in drainage networks from point observations using an efficient convex unmixing scheme, EGU General Assembly 2023, Vienna, Austria, 24–28 Apr 2023, EGU23-5368, [DOI: 10.5194/egusphere-egu23-5368](https://doi.org/10.5194/egusphere-egu23-5368), 2023.
+> Barnes, R. and Lipp, A. _Using convex optimization to efficiently apportion tracer and pollutant sources from point concentration observations_, Preprint DOI [10.31223/X5708M](https://doi.org/10.31223/X5708M), 2023. 
+
+A `.cff` citation file is also provided in the repository.
