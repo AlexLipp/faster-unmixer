@@ -188,7 +188,6 @@ def do_benchmark() -> None:
 def plot_benchmark() -> None:
     with open("benchmark_results.pkl", "rb") as fin:
         network_sizes, ecos_bench, gurobi_bench, scs_bench = pickle.load(fin)
-    # breakpoint()
 
     # Plot results of total runtime
     # Plot solve time against number of nodes
