@@ -204,7 +204,7 @@ def plot_benchmark() -> None:
     ax = fig.add_subplot(111)
 
     plot_first_second(network_sizes, ecos_bench, "ECOS", "#1f78b4", "#a6cee3")
-    plot_first_second(network_sizes, scs_bench, "SCS", "#e31a1c", "#fb9a99", scale=1e-3)
+    plot_first_second(network_sizes, scs_bench, "SCS", "#e31a1c", "#fb9a99")
     if gurobi_bench:
         plot_first_second(network_sizes, gurobi_bench, "GUROBI", "#33a02c", "#b2df8a")
     plot_first_second(network_sizes, clarabel_bench, "CLARABEL", "#ff7f00", "#fdbf6f")
@@ -217,9 +217,7 @@ def plot_benchmark() -> None:
 
     # Plot results of just the CVXPY solve time
     plot_solver_time(network_sizes, ecos_bench, "ECOS Solver Time", "#1f78b4", symbol="o--")
-    plot_solver_time(
-        network_sizes, scs_bench, "SCS Solver Time", "#e31a1c", scale=1e-3, symbol="o--"
-    )
+    plot_solver_time(network_sizes, scs_bench, "SCS Solver Time", "#e31a1c", symbol="o--")
     if gurobi_bench:
         plot_solver_time(network_sizes, gurobi_bench, "GUROBI Solver Time", "#33a02c", symbol="o--")
     plot_solver_time(network_sizes, clarabel_bench, "CLARABEL Solver Time", "#ff7f00", symbol="o--")
