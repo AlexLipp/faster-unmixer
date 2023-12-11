@@ -96,6 +96,7 @@ setuptools.setup(
         "networkx",
         "pygraphviz",
         "hypothesis",
+        "imageio",
         "pytest",
         "numpy",
         "pandas",
