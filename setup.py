@@ -92,14 +92,15 @@ setuptools.setup(
     install_requires=[
         "cvxpy",
         # "gdal",
+        "hypothesis",
+        "imageio",
         "matplotlib",
         "networkx",
-        "pygraphviz",
-        "hypothesis",
-        "pytest",
         "numpy",
         "pandas",
         "pybind11",
+        "pytest",
+        "pygraphviz",
         "tqdm",
     ],
 )

@@ -21,6 +21,7 @@ from typing import (
 
 # TODO(rbarnes): Make a requirements file for conda
 import cvxpy as cp
+import imageio
 
 # pyre-fixme[21]: Could not find module `matplotlib.image`.
 import matplotlib.image as mpimg
@@ -844,7 +845,7 @@ def get_unique_upstream_areas(
         The resulting dictionary provides a mapping between each sample number and its unique upstream area as a boolean
         mask.
     """
-    I = plt.imread("labels.tif")[:, :, 0]
+    I = imageio.v2.imread("labels.tif")
     return {node: I == data.label for node, data in nx_items(sample_network)}
 
 
