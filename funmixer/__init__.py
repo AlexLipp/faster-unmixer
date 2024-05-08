@@ -1,3 +1,5 @@
+from .d8processing import check_D8, set_d8_boundaries_to_zero, D8Accumulator
+
 from .network_unmixer import (
     ELEMENT_LIST,
     ElementData,
