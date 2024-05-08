@@ -1,13 +1,12 @@
-# Preprocessing functions for data input
-# 1. Snap samples to drainage
-#    - Snap to nearest drainage line greater than a certain threshold
-#    - Optionally take a dictionary of "nudges" to move points to the nearest drainage line
-#    - Plot up before and after with labelled points + arrows from original to snapped
-#    - Include a plot of the sub-catchments + the connected network.
+"""
+This module contains functions for (pre)processing D8 flow direction grids and snapping sample sites to drainage networks.
+"""
 
-import numpy as np
 from osgeo import gdal
-from typing import Tuple, List
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from typing import Tuple, List, Dict
 
 import funmixer.flow_acc_cfuncs as cf
 
@@ -26,7 +25,6 @@ def write_geotiff(filename: str, arr: np.ndarray, ds: gdal.Dataset) -> None:
         arr_type = gdal.GDT_Float32
     else:
         arr_type = gdal.GDT_Int32
-    print("Type of array is", arr.dtype)
     driver = gdal.GetDriverByName("GTiff")
     out_ds = driver.Create(filename, arr.shape[1], arr.shape[0], 1, arr_type)
     out_ds.SetProjection(ds.GetProjection())
@@ -37,9 +35,19 @@ def write_geotiff(filename: str, arr: np.ndarray, ds: gdal.Dataset) -> None:
     band.ComputeStatistics(False)
 
 
-def check_D8(
+def check_d8(
     flowdirs_filename: str,
-) -> bool:
+) -> None:
+    """
+    Checks if a D8 flow direction grid is valid. A valid D8 flow direction grid has the following properties:
+    - All boundary nodes are 0
+    - All values are 0, 1, 2, 4, 8, 16, 32, 64, 128
+
+    Args:
+        flowdirs_filename (str): The filename of the D8 flow direction grid
+    """
+    print("-" * 50)
+    print("Checking D8 flow direction grid at", flowdirs_filename)
     arr, _ = read_geo_file(flowdirs_filename)
     # Cast to int
     arr = arr.astype(int)
@@ -65,12 +73,11 @@ def check_D8(
         print("BOUNDARY CHECK RESULT: Pass.")
     # Return True if both boundaries_are_zero and values_are_valid
     result = boundaries_are_zero and values_are_valid
-    print("-" * 50)
     if result:
         print("D8 flow direction grid is valid.")
     else:
         print("D8 flow direction grid is INVALID.")
-    return result
+    print("-" * 50)
 
 
 def set_d8_boundaries_to_zero(flowdirs_filename: str) -> None:
@@ -114,6 +121,126 @@ def elevation_to_d8(elevation_filename: str) -> None:
     new_filename = f"d8_{name}.tif"
     print("Writing valid D8 to", new_filename)
     write_geotiff(new_filename, d8, ds)
+
+
+def snap_to_drainage(
+    flow_dirs_filename: str,
+    sample_sites_filename: str,
+    drainage_area_threshold: float,
+    plot: bool = True,
+    save: bool = False,
+    nudges: Dict[str, np.ndarray] = {},
+):
+    """
+    Function that snaps sample sites to the nearest drainage channel.
+
+    Args:
+        flow_dirs_filename (str): The filename of the flow directions file.
+        sample_sites_filename (str): The filename of the sample sites file.
+        drainage_area_threshold (float): The area threshold above which a pixel is classified as a channel.
+        plot (bool): Whether to plot the snapped sample sites.
+        save (bool): Whether to save the snapped sample sites to a file.
+        nudges (Dict[str, np.ndarray]): Dictionary of "nudges" for each sample site. The keys are the sample codes and the values are 2D vectors of dx and dy.
+    """
+    # Load in real samples
+    noisy_samples = pd.read_csv(sample_sites_filename, sep=" ")
+    # Check that noisy samples has the correct columns
+    if (
+        "x_coordinate" not in noisy_samples.columns
+        or "y_coordinate" not in noisy_samples.columns
+        or "Sample.Code" not in noisy_samples.columns
+    ):
+        raise ValueError(
+            "Noisy samples must have 'x_coordinate', 'y_coordinate' and 'Sample.Code' columns."
+        )
+
+    # The D8 accumulator
+    accum = D8Accumulator(flow_dirs_filename)
+    # Calculate upstream area for each cell
+    area = accum.accumulate()
+    # Get the x and y coordinates of the channels + combine into an array
+    chan_rows, chan_cols = np.where(area > drainage_area_threshold)
+    chan_x, chan_y = accum.indices_to_coords(chan_rows, chan_cols)
+    chan_coords = np.column_stack((chan_x, chan_y))
+
+    # Initiate an empty dictionary of "nudges", where each sample site is a key pointing to 2D vector of 0s
+    all_nudges = {code: np.zeros(2) for code in noisy_samples["Sample.Code"]}
+    # Update the nudges dictionary with the nudges argument
+    for code, nudge in nudges.items():
+        if code not in all_nudges:
+            raise ValueError(f"Provided sample code {code} not found in sample sites!")
+        # Check that nudge is a 2D vector
+        if len(nudge) != 2:
+            raise ValueError(f"Nudge for sample code {code} must be a 2D vector.")
+        all_nudges[code] = nudge
+
+    initial = np.column_stack((noisy_samples["x_coordinate"], noisy_samples["y_coordinate"]))
+    # Nudge the sample according to the entry in "nudges"
+    nudged = initial + np.array([all_nudges[code] for code in noisy_samples["Sample.Code"]])
+    snapped = np.zeros((noisy_samples.shape[1], 2))
+    # Loop through each sample site finding the nearest channel
+    for i in range(noisy_samples.shape[1]):
+        code = noisy_samples["Sample.Code"][i]
+        sample = [noisy_samples["x_coordinate"][i], noisy_samples["y_coordinate"][i]]
+        # Nudge the sample according to the entry in "nudges"
+        sample = sample + all_nudges[code]
+        distances = np.sqrt(np.sum((chan_coords - sample) ** 2, axis=1))
+        nearest = chan_coords[np.argmin(distances), :]
+        snapped[i] = nearest
+
+    # Plot the network and the noisy, nudged and snapped samples
+    if plot:
+        plt.figure(figsize=(15, 10))
+        plt.title("Snapped Sample Sites")
+        plt.scatter(chan_coords[:, 0], chan_coords[:, 1], c="blue", label="Channel")
+
+        # Add a grey line between the noisy and nudged samples
+        for i in range(noisy_samples.shape[1]):
+            plt.plot(
+                [noisy_samples["x_coordinate"][i], nudged[i, 0]],
+                [noisy_samples["y_coordinate"][i], nudged[i, 1]],
+                c="grey",
+                lw=1,
+            )
+        # Add the nudged samples to the plot
+        plt.scatter(nudged[:, 0], nudged[:, 1], c="purple", label="Nudged Sample", marker="x")
+        # Add the noisy samples to the plot
+        plt.scatter(
+            noisy_samples["x_coordinate"],
+            noisy_samples["y_coordinate"],
+            c="red",
+            label="Noisy Sample",
+            marker="x",
+        )
+        # Add a black line between the nudged and snapped samples
+        for i in range(noisy_samples.shape[1]):
+            plt.plot(
+                [nudged[i, 0], snapped[i, 0]],
+                [nudged[i, 1], snapped[i, 1]],
+                c="black",
+                lw=1,
+            )
+        # Add the snapped samples to the plot
+        plt.scatter(snapped[:, 0], snapped[:, 1], c="green", label="Snapped Sample", marker="x")
+        plt.legend()
+        # Add the sample codes to the plot for each noisy sample
+        for i in range(noisy_samples.shape[1]):
+            plt.text(
+                noisy_samples["x_coordinate"][i],
+                noisy_samples["y_coordinate"][i],
+                noisy_samples["Sample.Code"][i],
+                fontsize=8,
+            )
+        plt.axis("equal")
+
+    if save:
+        # Replace the x and y coordinates of the noisy samples with the snapped ones
+        noisy_samples["x_coordinate"] = snapped[:, 0]
+        noisy_samples["y_coordinate"] = snapped[:, 1]
+        # Save the snapped samples to a file with a suffix "snapped" before the file extension
+        outfile = sample_sites_filename.replace(".dat", "_snapped.dat")
+        print(f"Saving snapped samples to {outfile}")
+        noisy_samples.to_csv(outfile, sep=" ", index=False)
 
 
 class D8Accumulator:
@@ -239,3 +366,20 @@ class D8Accumulator:
         maxx = minx + trsfm[1] * self.arr.shape[1]
         miny = maxy + trsfm[5] * self.arr.shape[0]
         return [minx, maxx, miny, maxy]
+
+    def indices_to_coords(self, rows: np.ndarray, cols: np.ndarray) -> Tuple[np.ndarray]:
+        """
+        Convert column and row indices to x and y coordinates in the geospatial grid
+
+        Args:
+            rows (np.ndarray): Array of row indices
+            cols (np.ndarray): Array of column indices
+
+        Returns:
+            Tuple[np.ndarray]: Tuple of x and y coordinates
+        """
+
+        trsfm = self.ds.GetGeoTransform()
+        x = trsfm[0] + cols * trsfm[1]
+        y = trsfm[3] + rows * trsfm[5]
+        return x, y
