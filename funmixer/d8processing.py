@@ -10,9 +10,12 @@ from typing import Tuple, List, Dict
 
 import funmixer.flow_acc_cfuncs as cf
 
+D8_VALUES = {0, 1, 2, 4, 8, 16, 32, 64, 128}
+
 
 def read_geo_file(filename: str) -> Tuple[np.ndarray, gdal.Dataset]:
     """Reads a geospatial file"""
+    # Open the file with GDAL
     ds = gdal.Open(filename)
     band = ds.GetRasterBand(1)
     arr = band.ReadAsArray()
@@ -53,10 +56,10 @@ def check_d8(
     arr = arr.astype(int)
     # Check that the only values present are 0, 1, 2, 4, 8, 16, 32, 64, 128 using sets
     unique_values = set(np.unique(arr))
-    values_are_valid = unique_values == {0, 1, 2, 4, 8, 16, 32, 64, 128}
+    values_are_valid = unique_values == D8_VALUES
     if not values_are_valid:
         print(
-            f"VALUE CHECK RESULT: Fail. Invalid values present in D8 flow direction grid: {unique_values}. \n Expected values are { {0, 1, 2, 4, 8, 16, 32, 64, 128} }"
+            f"VALUE CHECK RESULT: Fail. Invalid values present in D8 flow direction grid: {unique_values}. \n Expected values are { D8_VALUES }"
         )
     else:
         print("VALUE CHECK RESULT: Pass.")
@@ -82,7 +85,7 @@ def check_d8(
 
 def set_d8_boundaries_to_zero(flowdirs_filename: str) -> None:
     """
-    Sets the boundaries of a D8 flow direction grid to zero. Writes the result to a new geotiff with a prefix "zero_bounds_"
+    Sets the boundaries of a D8 flow direction grid to zero. Writes the result to a new geotiff with a suffix "fix_bounds" before the file extension.
 
     Args:
         flowdirs_filename (str): The filename of the D8 flow direction grid
@@ -93,34 +96,12 @@ def set_d8_boundaries_to_zero(flowdirs_filename: str) -> None:
     arr[:, 0] = 0
     arr[:, -1] = 0
 
-    # Save the new file with prefix fixed_bounds_[original_filename].tif, overwriting the original file extension
-    name, _ = flowdirs_filename.split(".")
-    new_filename = f"zero_bounds_{name}.tif"
+    # Save the new file with suffix [original_filename]_fix_bounds.tif, overwriting the original file extension which may not be .tif
+    # Split the filename into the base and extension
+    base, _ = flowdirs_filename.rsplit(".", 1)
+    new_filename = base + "_fix_bounds.tif"
     print("Writing new file with zeroed boundaries to", new_filename)
     write_geotiff(new_filename, arr, ds)
-
-
-def elevation_to_d8(elevation_filename: str) -> None:
-    """
-    Converts a geospatial raster of elevations to a D8 flow grid and writes it to a file called [filename]_d8.tif.
-    Follows convention of ESRI D8 flow directions: right = 1, lower right = 2, bottom = 4, etc.
-    All boundary nodes are set to be sinks.
-
-    Args:
-        elevation_filename (str): The filename of the elevation raster
-    """
-    elev, ds = read_geo_file(elevation_filename)
-    d8 = cf.topo_to_d8(elev.astype(float))
-    # Set boundaries to zero
-    d8[0, :] = 0
-    d8[-1, :] = 0
-    d8[:, 0] = 0
-    d8[:, -1] = 0
-
-    name, _ = elevation_filename.split(".")
-    new_filename = f"d8_{name}.tif"
-    print("Writing valid D8 to", new_filename)
-    write_geotiff(new_filename, d8, ds)
 
 
 def snap_to_drainage(
@@ -154,10 +135,13 @@ def snap_to_drainage(
             "Noisy samples must have 'x_coordinate', 'y_coordinate' and 'Sample.Code' columns."
         )
 
+    print("Building D8 accumulator...")
     # The D8 accumulator
     accum = D8Accumulator(flow_dirs_filename)
     # Calculate upstream area for each cell
+    print("Calculating upstream area...")
     area = accum.accumulate()
+    print("Building channel locations...")
     # Get the x and y coordinates of the channels + combine into an array
     chan_rows, chan_cols = np.where(area > drainage_area_threshold)
     chan_x, chan_y = accum.indices_to_coords(chan_rows, chan_cols)
@@ -166,6 +150,7 @@ def snap_to_drainage(
     # Initiate an empty dictionary of "nudges", where each sample site is a key pointing to 2D vector of 0s
     all_nudges = {code: np.zeros(2) for code in noisy_samples["Sample.Code"]}
     # Update the nudges dictionary with the nudges argument
+    print("Applying nudges...")
     for code, nudge in nudges.items():
         if code not in all_nudges:
             raise ValueError(f"Provided sample code {code} not found in sample sites!")
@@ -179,6 +164,7 @@ def snap_to_drainage(
     nudged = initial + np.array([all_nudges[code] for code in noisy_samples["Sample.Code"]])
     snapped = np.zeros((noisy_samples.shape[1], 2))
     # Loop through each sample site finding the nearest channel
+    print("Looping through every sample snapping to drainage...")
     for i in range(noisy_samples.shape[1]):
         code = noisy_samples["Sample.Code"][i]
         sample = [noisy_samples["x_coordinate"][i], noisy_samples["y_coordinate"][i]]
@@ -187,7 +173,7 @@ def snap_to_drainage(
         distances = np.sqrt(np.sum((chan_coords - sample) ** 2, axis=1))
         nearest = chan_coords[np.argmin(distances), :]
         snapped[i] = nearest
-
+    print("Plotting results...")
     # Plot the network and the noisy, nudged and snapped samples
     if plot:
         plt.figure(figsize=(15, 10))
