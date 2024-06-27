@@ -173,9 +173,9 @@ def snap_to_drainage(
         distances = np.sqrt(np.sum((chan_coords - sample) ** 2, axis=1))
         nearest = chan_coords[np.argmin(distances), :]
         snapped[i] = nearest
-    print("Plotting results...")
     # Plot the network and the noisy, nudged and snapped samples
     if plot:
+        print("Plotting results...")
         plt.figure(figsize=(15, 10))
         plt.title("Snapped Sample Sites")
         plt.scatter(chan_coords[:, 0], chan_coords[:, 1], c="blue", label="Channel")
@@ -218,6 +218,7 @@ def snap_to_drainage(
                 fontsize=8,
             )
         plt.axis("equal")
+        plt.show()
 
     if save:
         # Replace the x and y coordinates of the noisy samples with the snapped ones
