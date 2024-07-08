@@ -162,10 +162,10 @@ def snap_to_drainage(
     initial = np.column_stack((noisy_samples["x_coordinate"], noisy_samples["y_coordinate"]))
     # Nudge the sample according to the entry in "nudges"
     nudged = initial + np.array([all_nudges[code] for code in noisy_samples["Sample.Code"]])
-    snapped = np.zeros((noisy_samples.shape[1], 2))
+    snapped = np.zeros((noisy_samples.shape[0], 2))
     # Loop through each sample site finding the nearest channel
     print("Looping through every sample snapping to drainage...")
-    for i in range(noisy_samples.shape[1]):
+    for i in range(noisy_samples.shape[0]):
         code = noisy_samples["Sample.Code"][i]
         sample = [noisy_samples["x_coordinate"][i], noisy_samples["y_coordinate"][i]]
         # Nudge the sample according to the entry in "nudges"
@@ -181,7 +181,7 @@ def snap_to_drainage(
         plt.scatter(chan_coords[:, 0], chan_coords[:, 1], c="blue", label="Channel")
 
         # Add a grey line between the noisy and nudged samples
-        for i in range(noisy_samples.shape[1]):
+        for i in range(noisy_samples.shape[0]):
             plt.plot(
                 [noisy_samples["x_coordinate"][i], nudged[i, 0]],
                 [noisy_samples["y_coordinate"][i], nudged[i, 1]],
@@ -195,11 +195,11 @@ def snap_to_drainage(
             noisy_samples["x_coordinate"],
             noisy_samples["y_coordinate"],
             c="red",
-            label="Noisy Sample",
+            label="Original Sample",
             marker="x",
         )
         # Add a black line between the nudged and snapped samples
-        for i in range(noisy_samples.shape[1]):
+        for i in range(noisy_samples.shape[0]):
             plt.plot(
                 [nudged[i, 0], snapped[i, 0]],
                 [nudged[i, 1], snapped[i, 1]],
@@ -210,7 +210,7 @@ def snap_to_drainage(
         plt.scatter(snapped[:, 0], snapped[:, 1], c="green", label="Snapped Sample", marker="x")
         plt.legend()
         # Add the sample codes to the plot for each noisy sample
-        for i in range(noisy_samples.shape[1]):
+        for i in range(noisy_samples.shape[0]):
             plt.text(
                 noisy_samples["x_coordinate"][i],
                 noisy_samples["y_coordinate"][i],
