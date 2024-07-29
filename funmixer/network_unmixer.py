@@ -855,6 +855,7 @@ def plot_sweep_of_regularizer_strength(
     min_: float,
     max_: float,
     trial_num: int,
+    export_rates: Optional[ExportRateData] = None,
 ) -> None:
     """
     Plot a sweep of regularization strengths and their impact on roughness and data misfit.
@@ -865,6 +866,7 @@ def plot_sweep_of_regularizer_strength(
         min_: The minimum exponent for the logspace range of regularization strengths to try.
         max_: The maximum exponent for the logspace range of regularization strengths to try.
         trial_num: The number of regularization strengths to try within the specified range.
+        export_rates: Dictionary of export rates for each sub-catchment. Defaults to equal export rate in each sub-catchment
 
     Note:
         The function performs a sweep of regularization strengths within a specified logspace range and plots their
@@ -883,7 +885,12 @@ def plot_sweep_of_regularizer_strength(
     """
     vals = np.logspace(min_, max_, num=trial_num)  # regularizer strengths to try
     for val in tqdm.tqdm(vals, total=len(vals)):
-        _ = sample_network.solve(element_data, solver="ecos", regularization_strength=val)
+        _ = sample_network.solve(
+            element_data,
+            solver="ecos",
+            regularization_strength=val,
+            export_rates=export_rates,
+        )
         roughness = sample_network.get_roughness()
         misfit = sample_network.get_misfit()
         plt.scatter(roughness, misfit, c="grey")
