@@ -601,6 +601,7 @@ class SampleNetworkUnmixer:
         observation_data: ElementData,
         relative_error: float,
         num_repeats: int,
+        export_rates: Optional[ExportRateData] = None,
         regularization_strength: Optional[float] = None,
         solver: str = "gurobi",
     ) -> Tuple[DefaultDict[str, List[float]], Dict[str, List[float]]]:
@@ -615,6 +616,7 @@ class SampleNetworkUnmixer:
             observation_data: The observed data for each element.
             relative_error: The *relative* error as a percentage to use for resampling the observation data.
             num_repeats: The number of times to repeat the Monte Carlo simulation.
+            export_rates: The export rates for each element. If not provided these are all set to 1.
             regularization_strength: The strength of the regularization term (default: None).
             solver: The solver to use for solving the optimization problem (default: "gurobi").
 
@@ -647,6 +649,7 @@ class SampleNetworkUnmixer:
                 observation_data=observation_data_resampled,
                 solver=solver,
                 regularization_strength=regularization_strength,
+                export_rates=export_rates,
             )  # Solve problem
             for sample_name, v in solution.downstream_preds.items():
                 predictions_down_mc[sample_name].append(v)
@@ -855,6 +858,7 @@ def plot_sweep_of_regularizer_strength(
     min_: float,
     max_: float,
     trial_num: int,
+    export_rates: Optional[ExportRateData] = None,
 ) -> None:
     """
     Plot a sweep of regularization strengths and their impact on roughness and data misfit.
@@ -865,6 +869,7 @@ def plot_sweep_of_regularizer_strength(
         min_: The minimum exponent for the logspace range of regularization strengths to try.
         max_: The maximum exponent for the logspace range of regularization strengths to try.
         trial_num: The number of regularization strengths to try within the specified range.
+        export_rates: Dictionary of export rates for each sub-catchment. Defaults to equal export rate in each sub-catchment
 
     Note:
         The function performs a sweep of regularization strengths within a specified logspace range and plots their
@@ -883,7 +888,12 @@ def plot_sweep_of_regularizer_strength(
     """
     vals = np.logspace(min_, max_, num=trial_num)  # regularizer strengths to try
     for val in tqdm.tqdm(vals, total=len(vals)):
-        _ = sample_network.solve(element_data, solver="ecos", regularization_strength=val)
+        _ = sample_network.solve(
+            element_data,
+            solver="ecos",
+            regularization_strength=val,
+            export_rates=export_rates,
+        )
         roughness = sample_network.get_roughness()
         misfit = sample_network.get_misfit()
         plt.scatter(roughness, misfit, c="grey")
