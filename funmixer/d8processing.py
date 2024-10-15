@@ -138,9 +138,14 @@ def snap_to_drainage(
     print("Building D8 accumulator...")
     # The D8 accumulator
     accum = D8Accumulator(flow_dirs_filename)
+
+    trsfm = accum.ds.GetGeoTransform()
+    dx, dy = trsfm[1], trsfm[5]
+    cell_area = np.abs(dx * dy)
+
     # Calculate upstream area for each cell
     print("Calculating upstream area...")
-    area = accum.accumulate()
+    area = accum.accumulate() * cell_area
     print("Building channel locations...")
     # Get the x and y coordinates of the channels + combine into an array
     chan_rows, chan_cols = np.where(area > drainage_area_threshold)
