@@ -361,7 +361,7 @@ class D8Accumulator:
 
     def indices_to_coords(self, rows: np.ndarray, cols: np.ndarray) -> Tuple[np.ndarray]:
         """
-        Convert column and row indices to x and y coordinates in the geospatial grid
+        Convert column and row indices to x and y coordinates for the centre point of a pixel in the geospatial grid
 
         Args:
             rows (np.ndarray): Array of row indices
@@ -372,6 +372,6 @@ class D8Accumulator:
         """
 
         trsfm = self.ds.GetGeoTransform()
-        x = trsfm[0] + cols * trsfm[1]
-        y = trsfm[3] + rows * trsfm[5]
+        x = (trsfm[0] + cols * trsfm[1]) + trsfm[1] / 2
+        y = (trsfm[3] + rows * trsfm[5]) + trsfm[5] / 2
         return x, y
