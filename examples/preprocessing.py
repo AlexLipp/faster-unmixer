@@ -84,7 +84,7 @@ plt.show()
 snap_to_drainage(
     flow_dirs_filename="data/d8.asc",
     sample_sites_filename="data/noisy_sample_data.dat",
-    drainage_area_threshold=1e3,
+    drainage_area_threshold=40000000,  # 40 km^2
     plot=True,
     save=True,
     nudges={"CG001": np.array([1000, -1000])},
