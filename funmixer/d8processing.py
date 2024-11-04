@@ -3,6 +3,7 @@ This module contains functions for (pre)processing D8 flow direction grids and s
 """
 
 from osgeo import gdal
+from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -98,7 +99,7 @@ def set_d8_boundaries_to_zero(flowdirs_filename: str) -> None:
 
     # Save the new file with suffix [original_filename]_fix_bounds.tif, overwriting the original file extension which may not be .tif
     # Split the filename into the base and extension
-    base, _ = flowdirs_filename.rsplit(".", 1)
+    base = Path(flowdirs_filename).stem
     new_filename = base + "_fix_bounds.tif"
     print("Writing new file with zeroed boundaries to", new_filename)
     write_geotiff(new_filename, arr, ds)
@@ -230,8 +231,8 @@ def snap_to_drainage(
         noisy_samples["x_coordinate"] = snapped[:, 0]
         noisy_samples["y_coordinate"] = snapped[:, 1]
         # Save the snapped samples to a file with a suffix "snapped" before the file extension
-        outfile = sample_sites_filename.replace(".dat", "_snapped.dat")
-        print(f"Saving snapped samples to {outfile}")
+        stem = Path(sample_sites_filename).stem
+        outfile = stem + "_snapped.dat"
         noisy_samples.to_csv(outfile, sep=" ", index=False)
 
 
