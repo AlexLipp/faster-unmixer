@@ -1,0 +1,15 @@
+*.csv
+*.jpg
+*.asc
+*.tif
+*.dot
+data_working/
+.vscode/
+.ipynb_checkpoints/
+__pycache__/
+build/
+*.so
+cyth_scripts.c
+*.egg-info
+.pyre/
+.hypothesis/

@@ -1,0 +1,16 @@
+name: funmixer
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - cvxpy
+  - gdal
+  - hypothesis
+  - matplotlib
+  - networkx
+  - numpy
+  - pandas
+  - pybind11
+  - pygraphviz
+  - pytest
+  - tqdm
